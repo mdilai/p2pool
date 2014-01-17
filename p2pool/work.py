@@ -20,7 +20,8 @@ print_throttle = 0.0
 class WorkerBridge(worker_interface.WorkerBridge):
     COINBASE_NONCE_LENGTH = 8
     
-    def __init__(self, node, my_pubkey_hash, donation_percentage, merged_urls, worker_fee, args, pubkeys, bitcoind):
+    def __init__(self, node, my_pubkey_hash, donation_percentage, merged_urls,
+                 worker_fee, , share_rate, share_rate_type, args, pubkeys, bitcoind):
         worker_interface.WorkerBridge.__init__(self)
         self.recent_shares_ts_work = []
         
@@ -33,6 +34,8 @@ class WorkerBridge(worker_interface.WorkerBridge):
 
         self.donation_percentage = args.donation_percentage
         self.worker_fee = args.worker_fee
+        self.share_rate = args.share_rate
+        self.share_rate_type = args.share_rate_type
         
         self.net = self.node.net.PARENT
         self.running = True
@@ -229,7 +232,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
         if time.time() > self.current_work.value['last_update'] + 60:
             raise jsonrpc.Error_for_code(-12345)(u'lost contact with bitcoind')
         user, pubkey_hash, desired_share_target, desired_pseudoshare_target = self.get_user_details(user)
-        return pubkey_hash, desired_share_target, desired_pseudoshare_target
+        return user, pubkey_hash, desired_share_target, desired_pseudoshare_target
     
     def _estimate_local_hash_rate(self):
         if len(self.recent_shares_ts_work) == 50:
@@ -254,11 +257,28 @@ class WorkerBridge(worker_interface.WorkerBridge):
         for datum in datums:
             addr_hash_rates[datum['pubkey_hash']] = addr_hash_rates.get(datum['pubkey_hash'], 0) + datum['work']/dt
         return addr_hash_rates
+ 
+    def get_local_addr_rate(self, pubkey_hash):
+        addr_hash_rate = 0
+        datums, dt = self.local_addr_rate_monitor.get_datums_in_last()
+        for datum in datums:
+            addr_hash_rate = addr_hash_rate + datum['work']/dt
+        return addr_hash_rate
     
-    def get_work(self, pubkey_hash, desired_share_target, desired_pseudoshare_target):
+    def get_miner_rate(self, miner):
+        miner_hash_rate = 0
+        datums, dt = self.local_rate_monitor.get_datums_in_last()
+        for datum in datums:
+            if datum['user'] == miner:
+                miner_hash_rate = miner_hash_rate + datum['work']/dt
+        return miner_hash_rate
+    
+    def get_work(self, user, pubkey_hash, desired_share_target, desired_pseudoshare_target):
         global print_throttle
-        if (self.node.p2p_node is None or len(self.node.p2p_node.peers) == 0) and self.node.net.PERSIST:
-            raise jsonrpc.Error_for_code(-12345)(u'p2pool is not connected to any peers')
+        if (self.node.p2p_node is None or len(self.node.p2p_node.peers) == 0)
+        and self.node.net.PERSIST:
+            raise jsonrpc.Error_for_code(-12345)(u'p2pool is not connected to
+                                                 any peers')
         if self.node.best_share_var.value is None and self.node.net.PERSIST:
             raise jsonrpc.Error_for_code(-12345)(u'p2pool is downloading shares')
         
@@ -357,18 +377,22 @@ class WorkerBridge(worker_interface.WorkerBridge):
         
         if desired_pseudoshare_target is None:
             target = 2**256-1
-            local_hash_rate = self._estimate_local_hash_rate()
-            if local_hash_rate is not None:
-                target = min(target,
-                    bitcoin_data.average_attempts_to_target(local_hash_rate * 1)) # limit to 1 share response every second by modulating pseudoshare difficulty
-            else:
-                # If we don't yet have an estimated node hashrate, then we still need to not undershoot the difficulty.
-                # Otherwise, we might get 1 PH/s of hashrate on difficulty settings appropriate for 1 GH/s.
-                # 1/100th the difficulty of a full share should be a reasonable upper bound. That way, if
-                # one node has the whole p2pool hashrate, it will still only need to process one pseudoshare
-                # every 0.3 seconds.
-                target = min(target, 1000 * bitcoin_data.average_attempts_to_target((bitcoin_data.target_to_average_attempts(
-                    self.node.bitcoind_work.value['bits'].target)*self.node.net.SPREAD)*self.node.net.PARENT.DUST_THRESHOLD/self.current_work.value['subsidy']))
+            if self.share_rate is not None:
+                if self.share_rate_type == 'address': # per-address
+                    if local_addr_rates is not None:
+                        local_rate = local_addr_rates.get(pubkey_hash, 0)
+                    else:
+                        local_rate = self.get_local_addr_rate(pubkey_hash)
+                else: # per-miner
+                    local_rate = self.get_miner_rate(user)
+                if local_rate > 0:
+                    target = min(target, bitcoin_data.average_attempts_to_target(local_rate * 60 / self.share_rate))
+            else: # per-node
+                local_hash_rate = self._estimate_local_hash_rate()
+                if local_hash_rate is not None:
+                    target = min(target, 1000 *
+                                 bitcoin_data.average_attempts_to_target((bitcoin_data.target_to_average_attempts(
+                                     self.node.bitcoind_work.value['bits'].target)*self.node.net.SPREAD)*self.node.net.PARENT.DUST_THRESHOLD/self.current_work.value['subsidy']))
         else:
             target = desired_pseudoshare_target
         target = max(target, share_info['bits'].target)
