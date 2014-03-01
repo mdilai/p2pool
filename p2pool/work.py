@@ -396,8 +396,12 @@ class WorkerBridge(worker_interface.WorkerBridge):
                                      self.node.bitcoind_work.value['bits'].target)*self.node.net.SPREAD)*self.node.net.PARENT.DUST_THRESHOLD/self.current_work.value['subsidy']))
             difficulty = bitcoin_data.target_to_difficulty(target)
             rounded_difficulty = 1
-            while (rounded_difficulty + rounded_difficulty * 2) / 2 < difficulty:
-                rounded_difficulty = rounded_difficulty * 2
+            if difficulty >= 1:
+                while (rounded_difficulty + rounded_difficulty * 2) / 2 < difficulty:
+                    rounded_difficulty = rounded_difficulty * 2
+            else:
+                while (rounded_difficulty + rounded_difficulty / 2) / 2 >= difficulty:
+                    rounded_difficulty = rounded_difficulty / 2
             target = bitcoin_data.difficulty_to_target(rounded_difficulty)
         else:
             target = desired_pseudoshare_target
