@@ -301,10 +301,11 @@ class WorkerBridge(worker_interface.WorkerBridge):
                     share_type = successor_type
                 else:
                     share_type = previous_share_type
+
+        local_addr_rates = self.get_local_addr_rates()
         
         if desired_share_target is None:
             desired_share_target = 2**256-1
-            local_addr_rates = self.get_local_addr_rates()
             local_hash_rate = local_addr_rates.get(pubkey_hash, 0)
             if local_hash_rate > 0.0:
                 desired_share_target = min(desired_share_target,
@@ -389,7 +390,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
                     pubkey_hash,
                     bitcoin_data.target_to_difficulty(target),
                     bitcoin_data.target_to_difficulty(share_info['bits'].target),
-                    self.get_local_addr_rates().get(pubkey_hash, 0),
+                    local_addr_rates.get(pubkey_hash, 0),
                     self.current_work.value['subsidy']*1e-8, self.node.net.PARENT.SYMBOL,
                     len(self.current_work.value['transactions']),
                     sum(map(bitcoin_data.tx_type.packed_size, self.current_work.value['transactions']))/1000.,
