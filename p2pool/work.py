@@ -377,7 +377,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
         mm_later = [(dict(aux_work, target=aux_work['target'] if aux_work['target'] != 'p2pool' else share_info['bits'].target), index, hashes) for aux_work, index, hashes in mm_later]
         
         if desired_pseudoshare_target is None:
-            target = bitcoin_data.difficulty_to_target(self.min_difficulty)
+            target = bitcoin_data.difficulty_to_target_alt(self.min_difficulty, self.node.net.PARENT.DUMB_SCRYPT_DIFF)
             if self.share_rate is not None:
                 if self.share_rate_type == 'address': # per-address
                     if local_addr_rates is not None:
@@ -394,7 +394,8 @@ class WorkerBridge(worker_interface.WorkerBridge):
                     target = min(target, 1000 *
                                  bitcoin_data.average_attempts_to_target((bitcoin_data.target_to_average_attempts(
                                      self.node.bitcoind_work.value['bits'].target)*self.node.net.SPREAD)*self.node.net.PARENT.DUST_THRESHOLD/self.current_work.value['subsidy']))
-            difficulty = bitcoin_data.target_to_difficulty(target)
+                    difficulty = bitcoin_data.target_to_difficulty_alt(target,
+                                                                       self.node.net.PARENT.DUMB_SCRYPT_DIFF)
             rounded_difficulty = 1
             if difficulty >= 1:
                 while (rounded_difficulty + rounded_difficulty * 2) / 2 < difficulty:
@@ -402,7 +403,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
             else:
                 while (rounded_difficulty + rounded_difficulty / 2) / 2 >= difficulty:
                     rounded_difficulty = rounded_difficulty / 2
-            target = bitcoin_data.difficulty_to_target(rounded_difficulty)
+            target = bitcoin_data.difficulty_to_target_alt(rounded_difficulty, self.node.net.PARENT.DUMB_SCRYPT_DIFF)
         else:
             target = desired_pseudoshare_target
         target = max(target, share_info['bits'].target)
