@@ -197,13 +197,13 @@ class WorkerBridge(worker_interface.WorkerBridge):
         for symbol, parameter in zip(contents2[::2], contents2[1::2]):
             if symbol == '+':
                 try:
-                    desired_pseudoshare_target = bitcoin_data.difficulty_to_target(float(parameter))
+                    desired_pseudoshare_target = bitcoin_data.difficulty_to_target_alt(float(parameter), self.node.net.PARENT.DUMB_SCRYPT_DIFF)
                 except:
                     if p2pool.DEBUG:
                         log.err()
             elif symbol == '/':
                 try:
-                    desired_share_target = bitcoin_data.difficulty_to_target(float(parameter))
+                    desired_share_target = bitcoin_data.difficulty_to_target_alt(float(parameter), self.node.net.PARENT.DUMB_SCRYPT_DIFF)
                 except:
                     if p2pool.DEBUG:
                         log.err()
@@ -422,8 +422,8 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 print 'New work for %s! Diff: %.02f Share diff: %.02f (speed
                 %.02f) Block value: %.2f %s (%i tx, %.0f kB)' % (
                     pubkey_hash,
-                    bitcoin_data.target_to_difficulty(target),
-                    bitcoin_data.target_to_difficulty(share_info['bits'].target),
+                    bitcoin_data.target_to_difficulty_alt(target, self.node.net.PARENT.DUMB_SCRYPT_DIFF),
+                    bitcoin_data.target_to_difficulty_alt(share_info['bits'].target, self.node.net.PARENT.DUMB_SCRYPT_DIFF),
                     local_addr_rates.get(pubkey_hash, 0),
                     self.current_work.value['subsidy']*1e-8, self.node.net.PARENT.SYMBOL,
                     len(self.current_work.value['transactions']),
