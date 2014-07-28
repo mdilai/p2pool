@@ -38,6 +38,11 @@ Run for additional options.
 
     python run_p2pool.py --help
 
+Litecoin:
+-------------------------
+
+For Litecoin instructions, please see the [Litecoin README](README.LITECOIN.md).
+
 Donations towards further development:
 -------------------------
     1Fi7YbpTYjHynUqbh1vwPcAqAqwQzeC1gw
@@ -50,8 +55,6 @@ Alternate web frontend:
 -------------------------
 * https://github.com/jramos/p2pool-node-status
 
-Notes for Litecoin:
-=========================
 Requirements:
 -------------------------
 In order to run P2Pool with the Litecoin network, you would need to build and install the
