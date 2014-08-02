@@ -256,4 +256,4 @@ Donations :
 License :
 -------------------------
 
-Code released under [the GPLv3 license](COPYING).
+Code released under [the GNU GPLv3 license](COPYING).
