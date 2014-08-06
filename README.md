@@ -1,4 +1,4 @@
-Requirements & Installation :
+Requirements & Installation
 -------------------------
 Generic:
 * Bitcoin >=0.11.1
@@ -21,7 +21,12 @@ Windows:
 * Install python win32 api wmi wrapper: https://pypi.python.org/pypi/WMI/#downloads
 * Unzip the files into C:\Python27\Lib\site-packages
 
-Running P2Pool :
+Note
+-------------------------
+
+This P2Pool fork includes the adaptive difficulty patch from [https://github.com/baloo-kiev/p2pool-adaptive](https://github.com/baloo-kiev/p2pool-adaptive/commit/10e59b9564740c6b039380b5b86fdf8071543f48). By default, adaptive difficuly is used but miner overrides are allowed.
+
+Running P2Pool
 -------------------------
 To use P2Pool, you must be running your own local bitcoind. For standard
 configurations, using P2Pool should be as simple as:
@@ -38,7 +43,7 @@ Run for additional options.
 
     python run_p2pool.py --help
 
-Option Reference :
+Option Reference
 -------------------------
 
     usage: run_p2pool.py [-h] [--version]
@@ -135,15 +140,15 @@ Option Reference :
                             username to default to being empty, and none will
                             cause P2Pool to read them from bitcoin.conf)
 
-Web Interface :
+Web Interface
 -------------------------
 * https://github.com/jramos/p2pool-node-status
 
-### Installation :
+### Installation
 
     git submodule update
 
-JSON API :
+JSON API
 -------------------------
 
 P2Pool exposes a JSON API to allow retrieving statistics about the node and the global P2Pool network. The endpoints are as follows:
@@ -186,11 +191,11 @@ This fork includes additional endpoints for use with the [p2pool-node-status](ht
 * /bitcoind/getpeerinfo
 * /bitcoind/rawtransaction/&lt;tx-hash&gt;
 
-Official Wiki :
+Official Wiki
 -------------------------
 https://en.bitcoin.it/wiki/P2Pool
 
-Requirements:
+Litecoin
 -------------------------
 In order to run P2Pool with the Litecoin network, you would need to build and install the
 ltc_scrypt module that includes the scrypt proof of work code that Litecoin uses for hashes.
@@ -239,7 +244,7 @@ Litecoin:
 -------------------------
 For Litecoin instructions, please see the [Litecoin README](README.LITECOIN.md).
 
-Sponsors :
+Sponsors
 -------------------------
 
 Thanks to:
@@ -252,12 +257,12 @@ License:
 [Available here](COPYING)
 
 
-Donations :
+Donations
 -------------------------
     Forrest Voight, BTC 1HNeqi3pJRNvXybNX4FKzZgYJsdTSqJTbk
     Justin Ramos, BTC 1Fi7YbpTYjHynUqbh1vwPcAqAqwQzeC1gw
 
-License :
+License
 -------------------------
 
 Code released under [the GNU GPLv3 license](COPYING).
