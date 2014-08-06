@@ -148,6 +148,10 @@ Web Interface
 
     git submodule update
 
+### Usage
+
+Access via ``http://<url-to-your-p2pool>:<port>/static``
+
 JSON API
 -------------------------
 
