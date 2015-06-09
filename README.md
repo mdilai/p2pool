@@ -142,6 +142,7 @@ Web Interface
 
 ### Installation
 
+    git submodule init
     git submodule update
 
 ### Usage
