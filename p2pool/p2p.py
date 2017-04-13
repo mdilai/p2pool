@@ -319,7 +319,6 @@ class Protocol(p2protocol.Protocol):
                             print >>sys.stderr, 'Peer referenced unknown transaction %064x, disconnecting' % (tx_hash,)
                             self.disconnect()
                             return
-                    tx_size = bitcoin_data.tx_type()
                     txs.append(tx)
             else:
                 txs = None
@@ -355,11 +354,7 @@ class Protocol(p2protocol.Protocol):
             print "Sending a share with %i txs (%i new) totaling %i msg bytes (%i new)" % (len(all_hashes), len(hashes_to_send), all_tx_size, new_tx_size)
 
         hashes_to_send = [x for x in tx_hashes if x not in self.node.mining_txs_var.value and x in known_txs]
-        all_hashes = share.share_info['new_transaction_hashes']
         new_tx_size = sum(100 + bitcoin_data.tx_type.packed_size(known_txs[x]) for x in hashes_to_send)
-        all_tx_size = sum(100 + bitcoin_data.tx_type.packed_size(known_txs[x]) for x in all_hashes)
-
-        print "Sending a share with %i txs (%i new) totaling %i msg bytes (%i new)" % (len(all_hashes), len(hashes_to_send), all_tx_size, new_tx_size)
 
         new_remote_remembered_txs_size = self.remote_remembered_txs_size + new_tx_size
         if new_remote_remembered_txs_size > self.max_remembered_txs_size:
