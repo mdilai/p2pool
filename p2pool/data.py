@@ -158,9 +158,9 @@ class NewShare(object):
                 this = [0, len(new_transaction_hashes)-1]
             transaction_hash_refs.extend(this)
             other_transaction_hashes.append(tx_hash)
-        
-        if all_transaction_size: print "Generating a share with %i bytes (%i new) and %i transactions (%i new)" % \
-           (all_transaction_size, new_transaction_size, len(other_transaction_hashes), len(new_transaction_hashes))
+
+        print "Generating a share with %i bytes (%i new) and %i transactions (%i new)" % \
+           (all_transaction_size, new_transaction_size, len(other_transaction_hashes)+len(new_transaction_hashes), len(new_transaction_hashes))
 
         included_transactions = set(other_transaction_hashes)
         removed_fees = [fee for tx_hash, fee in desired_other_transaction_hashes_and_fees if tx_hash not in included_transactions]
@@ -170,7 +170,7 @@ class NewShare(object):
         else:
             assert base_subsidy is not None
             share_data = dict(share_data, subsidy=base_subsidy + definite_fees)
-        
+
         weights, total_weight, donation_weight = tracker.get_cumulative_weights(previous_share.share_data['previous_share_hash'] if previous_share is not None else None,
             max(0, min(height, net.REAL_CHAIN_LENGTH) - 1),
             65535*net.SPREAD*bitcoin_data.target_to_average_attempts(block_target),
