@@ -1,4 +1,4 @@
-#!/opt/pypy/bin/pypy -O -E
+#!/opt/pypy/bin/pypy
 
 from p2pool import main
 
