@@ -55,7 +55,7 @@ class StratumRPCMiningProvider(object):
         ).addErrback(lambda err: None)
         self.handler_map[jobid] = x, got_response
     
-    def rpc_submit(self, worker_name, job_id, extranonce2, ntime, nonce):
+    def rpc_submit(self, worker_name, job_id, extranonce2, ntime, nonce, *args):
         if job_id not in self.handler_map:
             print >>sys.stderr, '''Couldn't link returned work's job id with its handler. This should only happen if this process was recently restarted!'''
             #self.other.svc_client.rpc_reconnect().addErrback(lambda err: None)
