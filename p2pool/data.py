@@ -5,6 +5,7 @@ import os
 import random
 import sys
 import time
+import array
 
 from twisted.python import log
 
@@ -159,6 +160,11 @@ class NewShare(object):
             transaction_hash_refs.extend(this)
             other_transaction_hashes.append(tx_hash)
 
+        if transaction_hash_refs and max(transaction_hash_refs) < 2**16:
+            transaction_hash_refs = array.array('H', transaction_hash_refs)
+        elif transaction_hash_refs and max(transaction_hash_refs) < 2**32: # in case we see blocks with more than 65536 tx
+            transaction_hash_refs = array.array('L', transaction_hash_refs)
+        
         if all_transaction_size: print "Generating a share with %i bytes (%i new) and %i transactions (%i new)" % \
            (all_transaction_size, new_transaction_size, len(other_transaction_hashes), len(new_transaction_hashes))
 
@@ -256,6 +262,13 @@ class NewShare(object):
         self.share_info = contents['share_info']
         self.hash_link = contents['hash_link']
         self.merkle_link = contents['merkle_link']
+
+        # save some memory if we can
+        txrefs = self.share_info['transaction_hash_refs']
+        if txrefs and max(txrefs) < 2**16:
+            self.share_info['transaction_hash_refs'] = array.array('H', txrefs)
+        elif txrefs and max(txrefs) < 2**32: # in case we see blocks with more than 65536 tx in the future
+            self.share_info['transaction_hash_refs'] = array.array('L', txrefs)
         
         if not (2 <= len(self.share_info['share_data']['coinbase']) <= 100):
             raise ValueError('''bad coinbase size! %i bytes''' % (len(self.share_info['share_data']['coinbase']),))
@@ -667,6 +680,8 @@ class ShareStore(object):
         self.dirname = os.path.dirname(os.path.abspath(prefix))
         self.filename = os.path.basename(os.path.abspath(prefix))
         self.net = net
+
+        start = time.time()
         
         known = {}
         filenames, next = self.get_filenames_and_next()
@@ -699,6 +714,8 @@ class ShareStore(object):
         
         self.known = known # filename -> (set of share hashes, set of verified hashes)
         self.known_desired = dict((k, (set(a), set(b))) for k, (a, b) in known.iteritems())
+
+        print "Share loading took %.3f seconds" % (time.time() - start)
     
     def _add_line(self, line):
         filenames, next = self.get_filenames_and_next()

@@ -71,6 +71,8 @@ class keypool():
     def getpaytotal(self):
         return self.payouttotal
 
+gnode = None # for debugging via rconsole/rfoo only
+
 @defer.inlineCallbacks
 def main(args, net, datadir_path, merged_urls, worker_endpoint):
     try:
@@ -184,7 +186,8 @@ def main(args, net, datadir_path, merged_urls, worker_endpoint):
         
         print 'Initializing work...'
         
-        node = p2pool_node.Node(factory, bitcoind, shares.values(), known_verified, net)
+        global gnode
+        gnode = node = p2pool_node.Node(factory, bitcoind, shares.values(), known_verified, net)
         yield node.start()
         
         for share_hash in shares:
@@ -457,6 +460,10 @@ def run():
     parser.add_argument('--debug',
         help='enable debugging mode',
         action='store_const', const=True, default=False, dest='debug')
+    parser.add_argument('--rconsole',
+        help='enable rconsole debugging mode (requires rfoo)',
+        action='store_const', const=True, default=False, dest='rconsole')
+
     parser.add_argument('-a', '--address',
         help='generate payouts to this address (default: <address requested from bitcoind>), or (dynamic)',
         type=str, action='store', default=None, dest='address')
@@ -683,6 +690,9 @@ def run():
             ).addBoth(lambda x: None)
     if not args.no_bugreport:
         log.addObserver(ErrorReporter().emit)
-    
+    if args.rconsole:
+        from rfoo.utils import rconsole
+        rconsole.spawn_server()
+
     reactor.callWhenRunning(main, args, net, datadir_path, merged_urls, worker_endpoint)
     reactor.run()
