@@ -330,8 +330,7 @@ class BaseShare(object):
         self.desired_version = self.share_data['desired_version']
         self.absheight = self.share_info['absheight']
         self.abswork = self.share_info['abswork']
-        if net.NAME == 'bitcoin': print "Checking absheight"
-        if net.NAME == 'bitcoin' and self.absheight > 3927800 and self.desired_version == 16:
+        if self.absheight > 3927800 and self.desired_version == 16:
             raise ValueError("This is not a hardfork-supporting share!")
         
         n = set()
