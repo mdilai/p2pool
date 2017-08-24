@@ -9,7 +9,7 @@ from p2pool.util import deferral, jsonrpc
 
 @deferral.retry('Error while checking Bitcoin connection:', 1)
 @defer.inlineCallbacks
-def check(bitcoind, net):
+def check(bitcoind, net, args):
     if not (yield net.PARENT.RPC_CHECK(bitcoind)):
         print >>sys.stderr, "    Check failed! Make sure that you're connected to the right bitcoind with --bitcoind-rpc-port!"
         raise deferral.RetrySilentlyException()
@@ -30,9 +30,25 @@ def check(bitcoind, net):
             softforks_supported |= set(item for item in blockchaininfo.get('bip9_softforks', []))
     except jsonrpc.Error_for_code(-32601): # Method not found
         softforks_supported = set()
-    if getattr(net, 'SOFTFORKS_REQUIRED', set()) - softforks_supported:
-        print 'Coin daemon too old! Upgrade!'
-        raise deferral.RetrySilentlyException()
+    unsupported_forks = getattr(net, 'SOFTFORKS_REQUIRED', set()) - softforks_supported
+    if unsupported_forks:
+        print "You are running a coin daemon that does not support all of the "
+        print "forking features that have been activated on this blockchain."
+        print "Consequently, your node may mine invalid blocks or may mine blocks that"
+        print "are not part of the Nakamoto consensus blockchain.\n"
+        print "Missing fork features:", ', '.join(unsupported_forks)
+        if 'segwit2x' in unsupported_forks:
+            print "It appears that the fork which your coin daemon does not support is segwit2x."
+            print "Although 90 percent of the Bitcoin hashrate supports segwit2x, the Bitcoin Core"
+            print "team does not support segwit2x. If you wish to support segwit2x, you can switch"
+            print "to a segwit2x-supporting client such as btc1. If you think segwit2x is trash and"
+            print "destined for failure, you may " + \
+                  ("disregard this message" if args.allow_obsolete_bitcoind else "override this error") + \
+                  "at your own peril."
+        if not args.allow_obsolete_bitcoind:
+            print "\nIf you know what you're doing, this error may be overridden by running p2pool"
+            print "with the '--allow-obsolete-bitcoind' command-line option.\n\n\n"
+            raise deferral.RetrySilentlyException()
 
 @deferral.retry('Error getting work from bitcoind:', 3)
 @defer.inlineCallbacks

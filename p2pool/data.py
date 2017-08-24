@@ -50,7 +50,8 @@ share_type = pack.ComposedType([
 def load_share(share, net, peer_addr):
     assert peer_addr is None or isinstance(peer_addr, tuple)
     if share['type'] in share_versions:
-        return share_versions[share['type']](net, peer_addr, Share.get_dynamic_types(net)['share_type'].unpack(share['contents']))
+        return share_versions[share['type']](net, peer_addr, share_versions[share['type']].get_dynamic_types(net)['share_type'].unpack(share['contents']))
+
     elif share['type'] < Share.VERSION:
         from p2pool import p2p
         raise p2p.PeerMisbehavingError('sent an obsolete share')
@@ -240,9 +241,9 @@ class BaseShare(object):
             print "Make sure your system clock is accurate, and ensure that you're connected to decent peers."
             print "If your clock is more than 300 seconds behind, it can result in orphaned shares."
             print "(It's also possible that this share is just taking a long time to mine.)"
-        if previous_share != None and previous_share.timestamp > int(time.mktime(time.gmtime()) - time.mktime(time.gmtime(0))) + 3:
+        if previous_share != None and previous_share.timestamp > int(time.time()) + 3:
             print "WARNING! Previous share's timestamp is %i seconds in the future. This is not normal." % \
-                   int(previous_share.timestamp - (int(time.mktime(time.gmtime()) - time.mktime(time.gmtime(0)))))
+                   int(previous_share.timestamp - (int(time.time())))
             print "Make sure your system clock is accurate. Errors beyond 300 sec result in orphaned shares."
 
         if segwit_activated:
@@ -374,9 +375,9 @@ class BaseShare(object):
     
     def check(self, tracker, other_txs=None):
         from p2pool import p2p
-        if self.timestamp > int(time.mktime(time.gmtime()) - time.mktime(time.gmtime(0))) + 300:
+        if self.timestamp > int(time.time()) + 600:
             raise ValueError("Share timestamp is %i seconds in the future! Check your system clock." % \
-                self.timestamp - int(time.mktime(time.gmtime()) - time.mktime(time.gmtime(0))))
+                self.timestamp - int(time.time()))
         counts = None
         if self.share_data['previous_share_hash'] is not None:
             previous_share = tracker.items[self.share_data['previous_share_hash']]

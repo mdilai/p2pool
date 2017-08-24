@@ -101,7 +101,7 @@ def main(args, net, datadir_path, merged_urls, worker_endpoint):
         url = '%s://%s:%i/' % ('https' if args.bitcoind_rpc_ssl else 'http', args.bitcoind_address, args.bitcoind_rpc_port)
         print '''Testing bitcoind RPC connection to '%s' with username '%s'...''' % (url, args.bitcoind_rpc_username)
         bitcoind = jsonrpc.HTTPProxy(url, dict(Authorization='Basic ' + base64.b64encode(args.bitcoind_rpc_username + ':' + args.bitcoind_rpc_password)), timeout=30)
-        yield helper.check(bitcoind, net)
+        yield helper.check(bitcoind, net, args)
         temp_work = yield helper.getwork(bitcoind)
         
         bitcoind_getinfo_var = variable.Variable(None)
@@ -566,6 +566,9 @@ def run():
     bitcoind_group.add_argument(metavar='BITCOIND_RPCUSERPASS',
         help='bitcoind RPC interface username, then password, space-separated (only one being provided will cause the username to default to being empty, and none will cause P2Pool to read them from bitcoin.conf)',
         type=str, action='store', default=[], nargs='*', dest='bitcoind_rpc_userpass')
+    bitcoind_group.add_argument('--allow-obsolete-bitcoind',
+        help='allow the use of coin daemons (bitcoind) that do not support all of the required softforks for this network (e.g. Bitcoin Core and segwit2x)',
+        action='store_const', const=True, default=False, dest='allow_obsolete_bitcoind')
     
     args = parser.parse_args()
     

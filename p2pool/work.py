@@ -111,9 +111,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
                     bits=bb['bits'], # not always true
                     coinbaseflags='',
                     height=t['height'] + 1,
-                    # while time.time() is usually UTC, it's not defined as such and is not portable,
-                    # and can differ by leap seconds true UTC on some platforms.
-                    time=max(int(time.mktime(time.gmtime()) - time.mktime(time.gmtime(0)) + 0.5), bb['timestamp'] + 1),
+                    time=max(int(time.time() + 0.5), bb['timestamp'] + 1),
                     transactions=[],
                     transaction_fees=[],
                     merkle_link=bitcoin_data.calculate_merkle_link([None], 0),
@@ -274,13 +272,15 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 miner_hash_rate = miner_hash_rate + datum['work']/dt
         return miner_hash_rate
     
-    def get_work(self, user, pubkey_hash, desired_share_target, desired_pseudoshare_target):
+    def get_work(self, user, pubkey_hash, desired_share_target, desired_pseudoshare_target, worker_ip=None):
         global print_throttle
         if (self.node.p2p_node is None or len(self.node.p2p_node.peers) == 0) and self.node.net.PERSIST:
             raise jsonrpc.Error_for_code(-12345)(u'p2pool is not connected to any peers')
         if self.node.best_share_var.value is None and self.node.net.PERSIST:
             raise jsonrpc.Error_for_code(-12345)(u'p2pool is downloading shares')
-        if set(r[1:] if r.startswith('!') else r for r in self.node.bitcoind_work.value['rules']) - set(getattr(self.node.net, 'SOFTFORKS_REQUIRED', [])):
+        unknown_rules = set(r[1:] if r.startswith('!') else r for r in self.node.bitcoind_work.value['rules']) - set(getattr(self.node.net, 'SOFTFORKS_REQUIRED', []))
+        if unknown_rules:
+            print "Unknown softforks found: ", unknown_rules
             raise jsonrpc.Error_for_code(-12345)(u'unknown rule activated')
         
         if self.merged_work.value:
@@ -362,7 +362,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
                     desired_version=(share_type.SUCCESSOR if share_type.SUCCESSOR is not None else share_type).VOTING_VERSION,
                 ),
                 block_target=self.current_work.value['bits'].target,
-                desired_timestamp=int(time.mktime(time.gmtime()) - time.mktime(time.gmtime(0)) + 0.5),
+                desired_timestamp=int(time.time() + 0.5),
                 desired_target=desired_share_target,
                 ref_merkle_link=dict(branch=[], index=0),
                 desired_other_transaction_hashes_and_fees=zip(tx_hashes, self.current_work.value['transaction_fees']),
