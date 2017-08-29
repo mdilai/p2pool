@@ -21,15 +21,15 @@ class ChecksummedType(pack.Type):
         self.checksum_func = checksum_func
     
     def read(self, file):
-        obj, file = self.inner.read(file)
+        obj = self.inner.read(file)
         data = self.inner.pack(obj)
         
         calculated_checksum = self.checksum_func(data)
-        checksum, file = pack.read(file, len(calculated_checksum))
+        checksum = file.read(len(calculated_checksum))
         if checksum != calculated_checksum:
             raise ValueError('invalid checksum')
         
-        return obj, file
+        return obj
     
     def write(self, file, item):
         data = self.inner.pack(item)
@@ -79,8 +79,8 @@ class FloatingIntegerType(pack.Type):
     _inner = pack.IntType(32)
     
     def read(self, file):
-        bits, file = self._inner.read(file)
-        return FloatingInteger(bits), file
+        bits = self._inner.read(file)
+        return FloatingInteger(bits)
     
     def write(self, file, item):
         return self._inner.write(file, item.bits)
@@ -137,21 +137,21 @@ class TransactionType(pack.Type):
     ])
 
     def read(self, file):
-        version, file = self._int_type.read(file)
-        marker, file = self._varint_type.read(file)
+        version = self._int_type.read(file)
+        marker = self._varint_type.read(file)
         if marker == 0:
-            next, file = self._wtx_type.read(file)
+            next = self._wtx_type.read(file)
             witness = [None]*len(next['tx_ins'])
             for i in xrange(len(next['tx_ins'])):
-                witness[i], file = self._witness_type.read(file)
-            locktime, file = self._int_type.read(file)
-            return dict(version=version, marker=marker, flag=next['flag'], tx_ins=next['tx_ins'], tx_outs=next['tx_outs'], witness=witness, lock_time=locktime), file
+                witness[i] = self._witness_type.read(file)
+            locktime = self._int_type.read(file)
+            return dict(version=version, marker=marker, flag=next['flag'], tx_ins=next['tx_ins'], tx_outs=next['tx_outs'], witness=witness, lock_time=locktime)
         else:
             tx_ins = [None]*marker
             for i in xrange(marker):
-                tx_ins[i], file = tx_in_type.read(file)
-            next, file = self._ntx_type.read(file)
-            return dict(version=version, tx_ins=tx_ins, tx_outs=next['tx_outs'], lock_time=next['lock_time']), file
+                tx_ins[i] = tx_in_type.read(file)
+            next = self._ntx_type.read(file)
+            return dict(version=version, tx_ins=tx_ins, tx_outs=next['tx_outs'], lock_time=next['lock_time'])
     
     def write(self, file, item):
         if is_segwit_tx(item):

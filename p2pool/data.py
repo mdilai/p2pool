@@ -83,8 +83,11 @@ class BaseShare(object):
 
     gentx_before_refhash = pack.VarStrType().pack(DONATION_SCRIPT) + pack.IntType(64).pack(0) + pack.VarStrType().pack('\x6a\x28' + pack.IntType(256).pack(0) + pack.IntType(64).pack(0))[:3]
 
+    cached_types = None
     @classmethod
     def get_dynamic_types(cls, net):
+        if not cls.cached_types == None:
+            return cls.cached_types
         t = dict(share_info_type=None, share_type=None, ref_type=None)
         segwit_data = ('segwit_data', pack.PossiblyNoneType(dict(txid_merkle_link=dict(branch=[], index=0), wtxid_merkle_root=2**256-1), pack.ComposedType([
             ('txid_merkle_link', pack.ComposedType([
@@ -131,6 +134,7 @@ class BaseShare(object):
             ('identifier', pack.FixedStrType(64//8)),
             ('share_info', t['share_info_type']),
         ])
+        cls.cached_types = t
         return t
 
     @classmethod
@@ -522,7 +526,7 @@ class OkayTracker(forest.Tracker):
             work=lambda share: bitcoin_data.target_to_average_attempts(share.target),
         )), subset_of=self)
         self.get_cumulative_weights = WeightsSkipList(self)
-    
+
     def attempt_verify(self, share):
         if share.hash in self.verified.items:
             return True

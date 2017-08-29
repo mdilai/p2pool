@@ -1,5 +1,7 @@
 import binascii
 import struct
+import cStringIO as StringIO
+import os
 
 import p2pool
 from p2pool.util import memoize
@@ -10,14 +12,12 @@ class EarlyEnd(Exception):
 class LateEnd(Exception):
     pass
 
-def read((data, pos), length):
-    data2 = data[pos:pos + length]
-    if len(data2) != length:
-        raise EarlyEnd()
-    return data2, (data, pos + length)
-
-def size((data, pos)):
-    return len(data) - pos
+def remaining(sio):
+    here = sio.tell()
+    sio.seek(0, os.SEEK_END)
+    end  = sio.tell()
+    sio.seek(here)
+    return end - here
 
 class Type(object):
     __slots__ = []
@@ -39,13 +39,9 @@ class Type(object):
         return not (self == other)
     
     def _unpack(self, data, ignore_trailing=False):
-        obj, (data2, pos) = self.read((data, 0))
-        
-        assert data2 is data
-        
-        if pos != len(data) and not ignore_trailing:
+        obj = self.read(data)
+        if not ignore_trailing and remaining(data):
             raise LateEnd()
-        
         return obj
     
     def _pack(self, obj):
@@ -60,6 +56,8 @@ class Type(object):
     
     
     def unpack(self, data, ignore_trailing=False):
+        if not type(data) == StringIO.InputType:
+            data = StringIO.StringIO(data)
         obj = self._unpack(data, ignore_trailing)
         
         if p2pool.DEBUG:
@@ -71,8 +69,13 @@ class Type(object):
         return obj
     
     def pack(self, obj):
-        # No check since obj can have more keys than our type
-        return self._pack(obj)
+        data = self._pack(obj)
+
+        if p2pool.DEBUG:
+            if self._unpack(StringIO.StringIO(data)) != obj:
+                raise AssertionError((self._unpack(StringIO.StringIO(data))), obj)
+
+        return data
     
     def packed_size(self, obj):
         if hasattr(obj, '_packed_size') and obj._packed_size is not None:
@@ -89,10 +92,10 @@ class Type(object):
 
 class VarIntType(Type):
     def read(self, file):
-        data, file = read(file, 1)
+        data = file.read(1)
         first = ord(data)
         if first < 0xfd:
-            return first, file
+            return first
         if first == 0xfd:
             desc, length, minimum = '<H', 2, 0xfd
         elif first == 0xfe:
@@ -101,11 +104,11 @@ class VarIntType(Type):
             desc, length, minimum = '<Q', 8, 2**32
         else:
             raise AssertionError()
-        data2, file = read(file, length)
+        data2 = file.read(length)
         res, = struct.unpack(desc, data2)
         if res < minimum:
             raise AssertionError('VarInt not canonically packed')
-        return res, file
+        return res
     
     def write(self, file, item):
         if item < 0xfd:
@@ -123,8 +126,8 @@ class VarStrType(Type):
     _inner_size = VarIntType()
     
     def read(self, file):
-        length, file = self._inner_size.read(file)
-        return read(file, length)
+        length = self._inner_size.read(file)
+        return file.read(length)
     
     def write(self, file, item):
         return self._inner_size.write(file, len(item)), item
@@ -141,10 +144,10 @@ class EnumType(Type):
             self.unpack_to_pack[v] = k
     
     def read(self, file):
-        data, file = self.inner.read(file)
+        data = self.inner.read(file)
         if data not in self.pack_to_unpack:
             raise ValueError('enum data (%r) not in pack_to_unpack (%r)' % (data, self.pack_to_unpack))
-        return self.pack_to_unpack[data], file
+        return self.pack_to_unpack[data]
     
     def write(self, file, item):
         if item not in self.unpack_to_pack:
@@ -159,12 +162,10 @@ class ListType(Type):
         self.mul = mul
     
     def read(self, file):
-        length, file = self._inner_size.read(file)
+        length = self._inner_size.read(file)
         length *= self.mul
-        res = [None]*length
-        for i in xrange(length):
-            res[i], file = self.type.read(file)
-        return res, file
+        res = [self.type.read(file) for i in xrange(length)]
+        return res
     
     def write(self, file, item):
         assert len(item) % self.mul == 0
@@ -181,8 +182,8 @@ class StructType(Type):
         self.length = struct.calcsize(self.desc)
     
     def read(self, file):
-        data, file = read(file, self.length)
-        return struct.unpack(self.desc, data)[0], file
+        data = file.read(self.length)
+        return struct.unpack(self.desc, data)[0]
     
     def write(self, file, item):
         return file, struct.pack(self.desc, item)
@@ -209,9 +210,9 @@ class IntType(Type):
     
     def read(self, file, b2a_hex=binascii.b2a_hex):
         if self.bytes == 0:
-            return 0, file
-        data, file = read(file, self.bytes)
-        return int(b2a_hex(data[::self.step]), 16), file
+            return 0
+        data = file.read(self.bytes)
+        return int(b2a_hex(data[::self.step]), 16)
     
     def write(self, file, item, a2b_hex=binascii.a2b_hex):
         if self.bytes == 0:
@@ -222,10 +223,10 @@ class IntType(Type):
 
 class IPV6AddressType(Type):
     def read(self, file):
-        data, file = read(file, 16)
+        data = file.read(16)
         if data[:12] == '00000000000000000000ffff'.decode('hex'):
-            return '.'.join(str(ord(x)) for x in data[12:]), file
-        return ':'.join(data[i*2:(i+1)*2].encode('hex') for i in xrange(8)), file
+            return '.'.join(str(ord(x)) for x in data[12:])
+        return ':'.join(data[i*2:(i+1)*2].encode('hex') for i in xrange(8))
     
     def write(self, file, item):
         if ':' in item:
@@ -287,8 +288,8 @@ class ComposedType(Type):
     def read(self, file):
         item = self.record_type()
         for key, type_ in self.fields:
-            item[key], file = type_.read(file)
-        return item, file
+            item[key] = type_.read(file)
+        return item
     
     def write(self, file, item):
         assert set(item.keys()) >= self.field_names
@@ -302,8 +303,8 @@ class PossiblyNoneType(Type):
         self.inner = inner
     
     def read(self, file):
-        value, file = self.inner.read(file)
-        return None if value == self.none_value else value, file
+        value = self.inner.read(file)
+        return None if value == self.none_value else value
     
     def write(self, file, item):
         if item == self.none_value:
@@ -315,7 +316,7 @@ class FixedStrType(Type):
         self.length = length
     
     def read(self, file):
-        return read(file, self.length)
+        return file.read(self.length)
     
     def write(self, file, item):
         if len(item) != self.length:
