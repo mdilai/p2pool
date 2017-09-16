@@ -45,15 +45,9 @@ class Type(object):
         return obj
     
     def _pack(self, obj):
-        f = self.write(None, obj)
-        
-        res = []
-        while f is not None:
-            res.append(f[1])
-            f = f[0]
-        res.reverse()
-        return ''.join(res)
-    
+        f = StringIO.StringIO()
+        self.write(f, obj)
+        return f.getvalue()
     
     def unpack(self, data, ignore_trailing=False):
         if not type(data) == StringIO.InputType:
@@ -62,20 +56,15 @@ class Type(object):
         
         if p2pool.DEBUG:
             packed = self._pack(obj)
-            good = data.startswith(packed) if ignore_trailing else data == packed
+            good = data.getvalue().startswith(packed) if ignore_trailing else data.getvalue() == packed
             if not good:
-                raise AssertionError()
+                raise AssertionError(ignore_trailing, packed, data.getvalue())
         
         return obj
     
     def pack(self, obj):
-        data = self._pack(obj)
-
-        if p2pool.DEBUG:
-            if self._unpack(StringIO.StringIO(data)) != obj:
-                raise AssertionError((self._unpack(StringIO.StringIO(data))), obj)
-
-        return data
+        # No check since obj can have more keys than our type
+        return self._pack(obj)
     
     def packed_size(self, obj):
         if hasattr(obj, '_packed_size') and obj._packed_size is not None:
@@ -112,13 +101,13 @@ class VarIntType(Type):
     
     def write(self, file, item):
         if item < 0xfd:
-            return file, struct.pack('<B', item)
+            return file.write(struct.pack('<B', item))
         elif item <= 0xffff:
-            return file, struct.pack('<BH', 0xfd, item)
+            return file.write(struct.pack('<BH', 0xfd, item))
         elif item <= 0xffffffff:
-            return file, struct.pack('<BI', 0xfe, item)
+            return file.write(struct.pack('<BI', 0xfe, item))
         elif item <= 0xffffffffffffffff:
-            return file, struct.pack('<BQ', 0xff, item)
+            return file.write(struct.pack('<BQ', 0xff, item))
         else:
             raise ValueError('int too large for varint')
 
@@ -130,7 +119,8 @@ class VarStrType(Type):
         return file.read(length)
     
     def write(self, file, item):
-        return self._inner_size.write(file, len(item)), item
+        self._inner_size.write(file, len(item))
+        file.write(item)
 
 class EnumType(Type):
     def __init__(self, inner, pack_to_unpack):
@@ -152,7 +142,7 @@ class EnumType(Type):
     def write(self, file, item):
         if item not in self.unpack_to_pack:
             raise ValueError('enum item (%r) not in unpack_to_pack (%r)' % (item, self.unpack_to_pack))
-        return self.inner.write(file, self.unpack_to_pack[item])
+        self.inner.write(file, self.unpack_to_pack[item])
 
 class ListType(Type):
     _inner_size = VarIntType()
@@ -169,10 +159,9 @@ class ListType(Type):
     
     def write(self, file, item):
         assert len(item) % self.mul == 0
-        file = self._inner_size.write(file, len(item)//self.mul)
+        self._inner_size.write(file, len(item)//self.mul)
         for subitem in item:
-            file = self.type.write(file, subitem)
-        return file
+            self.type.write(file, subitem)
 
 class StructType(Type):
     __slots__ = 'desc length'.split(' ')
@@ -186,7 +175,7 @@ class StructType(Type):
         return struct.unpack(self.desc, data)[0]
     
     def write(self, file, item):
-        return file, struct.pack(self.desc, item)
+        file.write(struct.pack(self.desc, item))
 
 @memoize.fast_memoize_multiple_args
 class IntType(Type):
@@ -216,10 +205,10 @@ class IntType(Type):
     
     def write(self, file, item, a2b_hex=binascii.a2b_hex):
         if self.bytes == 0:
-            return file
+            return None
         if not 0 <= item < self.max:
             raise ValueError('invalid int value - %r' % (item,))
-        return file, a2b_hex(self.format_str % (item,))[::self.step]
+        file.write(a2b_hex(self.format_str % (item,))[::self.step])
 
 class IPV6AddressType(Type):
     def read(self, file):
@@ -237,7 +226,7 @@ class IPV6AddressType(Type):
                 raise ValueError('invalid address: %r' % (bits,))
             data = '00000000000000000000ffff'.decode('hex') + ''.join(chr(x) for x in bits)
         assert len(data) == 16, len(data)
-        return file, data
+        file.write(data)
 
 _record_types = {}
 
@@ -294,8 +283,7 @@ class ComposedType(Type):
     def write(self, file, item):
         assert set(item.keys()) >= self.field_names
         for key, type_ in self.fields:
-            file = type_.write(file, item[key])
-        return file
+            type_.write(file, item[key])
 
 class PossiblyNoneType(Type):
     def __init__(self, none_value, inner):
@@ -309,7 +297,7 @@ class PossiblyNoneType(Type):
     def write(self, file, item):
         if item == self.none_value:
             raise ValueError('none_value used')
-        return self.inner.write(file, self.none_value if item is None else item)
+        self.inner.write(file, self.none_value if item is None else item)
 
 class FixedStrType(Type):
     def __init__(self, length):
@@ -321,4 +309,4 @@ class FixedStrType(Type):
     def write(self, file, item):
         if len(item) != self.length:
             raise ValueError('incorrect length item!')
-        return file, item
+        file.write(item)

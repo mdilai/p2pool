@@ -21,8 +21,11 @@ class ChecksummedType(pack.Type):
         self.checksum_func = checksum_func
     
     def read(self, file):
+        start = file.tell()
         obj = self.inner.read(file)
-        data = self.inner.pack(obj)
+        end = file.tell()
+        file.seek(start)
+        data = file.read(end - start)
         
         calculated_checksum = self.checksum_func(data)
         checksum = file.read(len(calculated_checksum))
@@ -33,7 +36,9 @@ class ChecksummedType(pack.Type):
     
     def write(self, file, item):
         data = self.inner.pack(item)
-        return (file, data), self.checksum_func(data)
+        file.write(data)
+        file.write(self.checksum_func(data))
+        #return (file, data), self.checksum_func(data)
 
 class FloatingInteger(object):
     __slots__ = ['bits', '_target']
@@ -156,11 +161,11 @@ class TransactionType(pack.Type):
     def write(self, file, item):
         if is_segwit_tx(item):
             assert len(item['tx_ins']) == len(item['witness'])
-            res = self._write_type.pack(item)
+            self._write_type.write(file, item)
             for w in item['witness']:
-                res += self._witness_type.pack(w)
-            res += self._int_type.pack(item['lock_time'])
-            return file, res
+                self._witness_type.write(file, w)
+            self._int_type.write(file, item['lock_time'])
+            return
         return tx_id_type.write(file, item)
 
 tx_type = TransactionType()
