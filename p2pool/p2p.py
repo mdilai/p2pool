@@ -206,6 +206,7 @@ class Protocol(p2protocol.Protocol):
         self.connection_lost_event.watch(lambda: self.node.known_txs_var.removed.unwatch(watch_id1))
         
         def update_remote_view_of_my_known_txs(before, after):
+            t0 = time.time()
             added = set(after) - set(before)
             removed = set(before) - set(after)
             if added:
@@ -217,12 +218,15 @@ class Protocol(p2protocol.Protocol):
                 key = max(self.known_txs_cache) + 1 if self.known_txs_cache else 0
                 self.known_txs_cache[key] = dict((h, before[h]) for h in removed)
                 reactor.callLater(20, self.known_txs_cache.pop, key)
+            t1 = time.time()
+            if p2pool.BENCH: print "%8.3f ms for update_remote_view_of_my_known_txs" % ((t1-t0)*1000.)
         watch_id2 = self.node.known_txs_var.transitioned.watch(update_remote_view_of_my_known_txs)
         self.connection_lost_event.watch(lambda: self.node.known_txs_var.transitioned.unwatch(watch_id2))
         
         self.send_have_tx(tx_hashes=self.node.known_txs_var.value.keys())
         
         def update_remote_view_of_my_mining_txs(before, after):
+            t0 = time.time()
             added = set(after) - set(before)
             removed = set(before) - set(after)
             if removed:
@@ -232,6 +236,9 @@ class Protocol(p2protocol.Protocol):
                 self.remote_remembered_txs_size += sum(100 + bitcoin_data.tx_type.packed_size(after[x]) for x in added)
                 assert self.remote_remembered_txs_size <= self.max_remembered_txs_size
                 fragment(self.send_remember_tx, tx_hashes=[x for x in added if x in self.remote_tx_hashes], txs=[after[x] for x in added if x not in self.remote_tx_hashes])
+            t1 = time.time()
+            if p2pool.BENCH: print "%8.3f ms for update_remote_view_of_my_mining_txs" % ((t1-t0)*1000.)
+
         watch_id2 = self.node.mining_txs_var.transitioned.watch(update_remote_view_of_my_mining_txs)
         self.connection_lost_event.watch(lambda: self.node.mining_txs_var.transitioned.unwatch(watch_id2))
         
@@ -300,6 +307,7 @@ class Protocol(p2protocol.Protocol):
         ('shares', pack.ListType(p2pool_data.share_type)),
     ])
     def handle_shares(self, shares):
+        t0 = time.time()
         result = []
         for wrappedshare in shares:
             if wrappedshare['type'] < p2pool_data.Share.VERSION: continue
@@ -326,8 +334,12 @@ class Protocol(p2protocol.Protocol):
             result.append((share, txs))
             
         self.node.handle_shares(result, self)
+        t1 = time.time()
+        if p2pool.BENCH: print "%8.3f ms for %i shares in handle_shares (%3.3f ms/share)" % ((t1-t0)*1000., len(shares), (t1-t0)*1000./ max(1, len(shares)))
+
     
     def sendShares(self, shares, tracker, known_txs, include_txs_with=[]):
+        t0 = time.time()
         tx_hashes = set()
         for share in shares:
             if share.VERSION >= 13:
@@ -368,6 +380,9 @@ class Protocol(p2protocol.Protocol):
         self.send_forget_tx(tx_hashes=hashes_to_send)
         
         self.remote_remembered_txs_size -= new_tx_size
+        t1 = time.time()
+        if p2pool.BENCH: print "%8.3f ms for %i shares in sendShares (%3.3f ms/share)" % ((t1-t0)*1000., len(shares), (t1-t0)*1000./ max(1, len(shares)))
+
     
     
     message_sharereq = pack.ComposedType([
@@ -416,8 +431,12 @@ class Protocol(p2protocol.Protocol):
         ('tx_hashes', pack.ListType(pack.IntType(256))),
     ])
     def handle_losing_tx(self, tx_hashes):
+        t0 = time.time()
         #assert self.remote_tx_hashes.issuperset(tx_hashes)
         self.remote_tx_hashes.difference_update(tx_hashes)
+        t1 = time.time()
+        if p2pool.BENCH: print "%8.3f ms for %i txs in handle_losing_tx (%3.3f ms/tx)" % ((t1-t0)*1000., len(tx_hashes), (t1-t0)*1000./ max(1, len(tx_hashes)))
+
     
     
     message_remember_tx = pack.ComposedType([
@@ -425,6 +444,7 @@ class Protocol(p2protocol.Protocol):
         ('txs', pack.ListType(bitcoin_data.tx_type)),
     ])
     def handle_remember_tx(self, tx_hashes, txs):
+        t0 = time.time()
         for tx_hash in tx_hashes:
             if tx_hash in self.remembered_txs:
                 print >>sys.stderr, 'Peer referenced transaction twice, disconnecting'
@@ -465,6 +485,8 @@ class Protocol(p2protocol.Protocol):
         self.node.known_txs_var.add(added_known_txs)
         if self.remembered_txs_size >= self.max_remembered_txs_size:
             raise PeerMisbehavingError('too much transaction data stored')
+        t1 = time.time()
+        if p2pool.BENCH: print "%8.3f ms for %i txs in p2p.py:handle_remember_tx (%3.3f ms/tx)" % ((t1-t0)*1000., len(tx_hashes), ((t1-t0)*1000. / max(1,len(tx_hashes)) ))
     message_forget_tx = pack.ComposedType([
         ('tx_hashes', pack.ListType(pack.IntType(256))),
     ])

@@ -71,15 +71,29 @@ def getwork(bitcoind, use_getblocktemplate=False):
         except jsonrpc.Error_for_code(-32601): # Method not found
             print >>sys.stderr, 'Error: Bitcoin version too old! Upgrade to v0.5 or newer!'
             raise deferral.RetrySilentlyException()
+    t0 = time.time()
     packed_transactions = [(x['data'] if isinstance(x, dict) else x).decode('hex') for x in work['transactions']]
+    t1 = time.time()
+
     if 'height' not in work:
         work['height'] = (yield bitcoind.rpc_getblock(work['previousblockhash']))['height'] + 1
     elif p2pool.DEBUG:
         assert work['height'] == (yield bitcoind.rpc_getblock(work['previousblockhash']))['height'] + 1
+    unpacked_transactions = map(bitcoin_data.tx_type.unpack, packed_transactions)
+    t2 = time.time()
+    txhashes = map(bitcoin_data.hash256, packed_transactions)
+    t3 = time.time()
+    if p2pool.BENCH: print "Decoding transactions took %2.0f ms, Unpacking %2.0f ms, hashing %2.0f ms" % ((t1 - t0)*1000., (t2-t1)*1000., (t3-t2)*1000.)
+    import random
+    for i in range(10):
+        n = random.randint(0, len(unpacked_transactions)-1)
+        packed = bitcoin_data.tx_type.pack(unpacked_transactions[n])
+        assert packed == packed_transactions[n]
+
     defer.returnValue(dict(
         version=work['version'],
         previous_block=int(work['previousblockhash'], 16),
-        transactions=map(bitcoin_data.tx_type.unpack, packed_transactions),
+        transactions=unpacked_transactions,
         transaction_hashes=map(bitcoin_data.hash256, packed_transactions),
         transaction_fees=[x.get('fee', None) if isinstance(x, dict) else None for x in work['transactions']],
         subsidy=work['coinbasevalue'],
