@@ -37,14 +37,6 @@ def check(bitcoind, net, args):
         print "Consequently, your node may mine invalid blocks or may mine blocks that"
         print "are not part of the Nakamoto consensus blockchain.\n"
         print "Missing fork features:", ', '.join(unsupported_forks)
-        if 'segwit2x' in unsupported_forks:
-            print "It appears that the fork which your coin daemon does not support is segwit2x."
-            print "Although 90 percent of the Bitcoin hashrate supports segwit2x, the Bitcoin Core"
-            print "team does not support segwit2x. If you wish to support segwit2x, you can switch"
-            print "to a segwit2x-supporting client such as btc1. If you think segwit2x is trash and"
-            print "destined for failure, you may " + \
-                  ("disregard this message" if args.allow_obsolete_bitcoind else "override this error") + \
-                  "at your own peril."
         if not args.allow_obsolete_bitcoind:
             print "\nIf you know what you're doing, this error may be overridden by running p2pool"
             print "with the '--allow-obsolete-bitcoind' command-line option.\n\n\n"
