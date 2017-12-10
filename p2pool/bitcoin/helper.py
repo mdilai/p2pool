@@ -77,10 +77,11 @@ def getwork(bitcoind, use_getblocktemplate=False):
     t3 = time.time()
     if p2pool.BENCH: print "Decoding transactions took %2.0f ms, Unpacking %2.0f ms, hashing %2.0f ms" % ((t1 - t0)*1000., (t2-t1)*1000., (t3-t2)*1000.)
     import random
-    for i in range(10):
-        n = random.randint(0, len(unpacked_transactions)-1)
-        packed = bitcoin_data.tx_type.pack(unpacked_transactions[n])
-        assert packed == packed_transactions[n]
+    if unpacked_transactions:
+        for i in range(10):
+            n = random.randint(0, len(unpacked_transactions)-1)
+            packed = bitcoin_data.tx_type.pack(unpacked_transactions[n])
+            assert packed == packed_transactions[n]
 
     defer.returnValue(dict(
         version=work['version'],
