@@ -11,7 +11,7 @@ from p2pool.util import deferral, jsonrpc
 @defer.inlineCallbacks
 def check(bitcoind, net, args):
     if not (yield net.PARENT.RPC_CHECK(bitcoind)):
-        print >>sys.stderr, "    Check failed! Make sure that you're connected to the right bitcoind with --bitcoind-rpc-port!"
+        print >>sys.stderr, "    Check failed! Make sure that you're connected to the right bitcoind with --bitcoind-rpc-port, and that it has finished syncing!"
         raise deferral.RetrySilentlyException()
     
     version_check_result = net.VERSION_CHECK((yield bitcoind.rpc_getinfo())['version'])
