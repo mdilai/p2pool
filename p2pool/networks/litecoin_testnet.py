@@ -16,3 +16,5 @@ WORKER_PORT = 19327
 BOOTSTRAP_ADDRS = 'forre.st vps.forre.st'.split(' ')
 ANNOUNCE_CHANNEL = '#p2pool-alt'
 VERSION_CHECK = lambda v: True
+BLOCK_MAX_SIZE = 1000000
+BLOCK_MAX_WEIGHT = 4000000
