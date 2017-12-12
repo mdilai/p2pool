@@ -507,7 +507,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 self.local_rate_monitor.add_datum(dict(work=bitcoin_data.target_to_average_attempts(target), dead=not on_time, user=user, share_target=share_info['bits'].target))
                 self.local_addr_rate_monitor.add_datum(dict(work=bitcoin_data.target_to_average_attempts(target), pubkey_hash=pubkey_hash))
             t1 = time.time()
-            if p2pool.BENCH: print "%8.3f ms for work.py:got_response()" % ((t1-t0)*1000.)
+            if p2pool.BENCH and (t1-t1) > .01: print "%8.3f ms for work.py:got_response()" % ((t1-t0)*1000.)
 
             return on_time
         t1 = time.time()

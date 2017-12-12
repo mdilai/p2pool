@@ -6,6 +6,7 @@ from twisted.internet import defer
 import p2pool
 from p2pool.bitcoin import data as bitcoin_data
 from p2pool.util import deferral, jsonrpc
+txlookup = {}
 
 @deferral.retry('Error while checking Bitcoin connection:', 1)
 @defer.inlineCallbacks
@@ -44,7 +45,7 @@ def check(bitcoind, net, args):
 
 @deferral.retry('Error getting work from bitcoind:', 3)
 @defer.inlineCallbacks
-def getwork(bitcoind, use_getblocktemplate=False):
+def getwork(bitcoind, use_getblocktemplate=False, txidcache={}, known_txs={}):
     def go():
         if use_getblocktemplate:
             return bitcoind.rpc_getblocktemplate(dict(mode='template', rules=['segwit']))
@@ -63,31 +64,57 @@ def getwork(bitcoind, use_getblocktemplate=False):
         except jsonrpc.Error_for_code(-32601): # Method not found
             print >>sys.stderr, 'Error: Bitcoin version too old! Upgrade to v0.5 or newer!'
             raise deferral.RetrySilentlyException()
+
+    if not 'start' in txidcache: # we clear it every 30 min
+        txidcache['start'] = time.time()
+
     t0 = time.time()
-    packed_transactions = [(x['data'] if isinstance(x, dict) else x).decode('hex') for x in work['transactions']]
-    t1 = time.time()
+    unpacked_transactions = []
+    txhashes = []
+    cachehits = 0
+    cachemisses = 0
+    knownhits = 0
+    knownmisses = 0
+    for x in work['transactions']:
+        x = x['data'] if isinstance(x, dict) else x
+        packed = None
+        if x in txidcache:
+            cachehits += 1
+            txid = (txidcache[x])
+            txhashes.append(txid)
+        else:
+            cachemisses += 1
+            packed = x.decode('hex')
+            txid = bitcoin_data.hash256(packed)
+            txidcache[x] = txid
+            txhashes.append(txid)
+        if txid in known_txs:
+            knownhits += 1
+            unpacked = known_txs[txid]
+        else:
+            knownmisses += 1
+            if not packed:
+                packed = x.decode('hex')
+            unpacked = bitcoin_data.tx_type.unpack(packed)
+        unpacked_transactions.append(unpacked)
+
+    if time.time() - txidcache['start'] > 30*60.:
+        keepers = {(x['data'] if isinstance(x, dict) else x):txid for x, txid in zip(work['transactions'], txhashes)}
+        txidcache.clear()
+        txidcache.update(keepers)
 
     if 'height' not in work:
         work['height'] = (yield bitcoind.rpc_getblock(work['previousblockhash']))['height'] + 1
     elif p2pool.DEBUG:
         assert work['height'] == (yield bitcoind.rpc_getblock(work['previousblockhash']))['height'] + 1
-    unpacked_transactions = map(bitcoin_data.tx_type.unpack, packed_transactions)
-    t2 = time.time()
-    txhashes = map(bitcoin_data.hash256, packed_transactions)
-    t3 = time.time()
-    if p2pool.BENCH: print "Decoding transactions took %2.0f ms, Unpacking %2.0f ms, hashing %2.0f ms" % ((t1 - t0)*1000., (t2-t1)*1000., (t3-t2)*1000.)
-    import random
-    if unpacked_transactions:
-        for i in range(10):
-            n = random.randint(0, len(unpacked_transactions)-1)
-            packed = bitcoin_data.tx_type.pack(unpacked_transactions[n])
-            assert packed == packed_transactions[n]
 
+    t1 = time.time()
+    if p2pool.BENCH: print "%8.3f ms for helper.py:getwork(). Cache: %i hits %i misses, %i known_tx %i unknown %i cached" % ((t1 - t0)*1000., cachehits, cachemisses, knownhits, knownmisses, len(txidcache))
     defer.returnValue(dict(
         version=work['version'],
         previous_block=int(work['previousblockhash'], 16),
         transactions=unpacked_transactions,
-        transaction_hashes=map(bitcoin_data.hash256, packed_transactions),
+        transaction_hashes=txhashes,
         transaction_fees=[x.get('fee', None) if isinstance(x, dict) else None for x in work['transactions']],
         subsidy=work['coinbasevalue'],
         time=work['time'] if 'time' in work else work['curtime'],
