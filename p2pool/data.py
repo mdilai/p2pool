@@ -141,6 +141,7 @@ class BaseShare(object):
 
     @classmethod
     def generate_transaction(cls, tracker, share_data, block_target, desired_timestamp, desired_target, ref_merkle_link, desired_other_transaction_hashes_and_fees, net, known_txs=None, last_txout_nonce=0, base_subsidy=None, segwit_data=None):
+        t0 = time.time()
         previous_share = tracker.items[share_data['previous_share_hash']] if share_data['previous_share_hash'] is not None else None
         
         height, last = tracker.get_height_and_last(share_data['previous_share_hash'])
@@ -156,28 +157,32 @@ class BaseShare(object):
         bits = bitcoin_data.FloatingInteger.from_target_upper_bound(math.clip(desired_target, (pre_target3//30, pre_target3)))
         
         new_transaction_hashes = []
-        new_transaction_size = 0
-        all_transaction_size = 0
+        new_transaction_size = 0 # including witnesses
+        all_transaction_stripped_size = 0 # stripped size
+        all_transaction_real_size = 0 # including witnesses, for statistics
         new_transaction_weight = 0
         all_transaction_weight = 0
         transaction_hash_refs = []
         other_transaction_hashes = []
-        
+        t1 = time.time()
         past_shares = list(tracker.get_chain(share_data['previous_share_hash'], min(height, 100)))
         tx_hash_to_this = {}
         for i, share in enumerate(past_shares):
             for j, tx_hash in enumerate(share.new_transaction_hashes):
                 if tx_hash not in tx_hash_to_this:
                     tx_hash_to_this[tx_hash] = [1+i, j] # share_count, tx_count
+        t2 = time.time()
         for tx_hash, fee in desired_other_transaction_hashes_and_fees:
             if known_txs is not None:
-                this_size   = bitcoin_data.tx_id_type.packed_size(known_txs[tx_hash])
-                this_weight = bitcoin_data.tx_type.packed_size(known_txs[tx_hash]) + 3*this_size
+                this_stripped_size = bitcoin_data.tx_id_type.packed_size(known_txs[tx_hash])
+                this_real_size     = bitcoin_data.tx_type.packed_size(known_txs[tx_hash])
+                this_weight        = this_real_size + 3*this_stripped_size
             else: # we're just verifying someone else's share. We'll calculate sizes in should_punish_reason()
-                this_size = 0
+                this_stripped_size = 0
+                this_real_size = 0
                 this_weight = 0
 
-            if all_transaction_size + this_size + 80 + cls.gentx_size + 500 > net.BLOCK_MAX_SIZE: # only allow 1000 kB of new txns/share
+            if all_transaction_stripped_size + this_stripped_size + 80 + cls.gentx_size +  500 > net.BLOCK_MAX_SIZE:
                 break
             if all_transaction_weight + this_weight + 4*80 + cls.gentx_weight + 2000 > net.BLOCK_MAX_WEIGHT:
                 break
@@ -185,12 +190,14 @@ class BaseShare(object):
             if tx_hash in tx_hash_to_this:
                 this = tx_hash_to_this[tx_hash]
                 if known_txs is not None:
-                    all_transaction_size   += this_size
+                    all_transaction_stripped_size += this_stripped_size
+                    all_transaction_real_size += this_real_size
                     all_transaction_weight += this_weight
             else:
                 if known_txs is not None:
-                    new_transaction_size += this_size
-                    all_transaction_size += this_size
+                    new_transaction_size += this_real_size
+                    all_transaction_stripped_size += this_stripped_size
+                    all_transaction_real_size += this_real_size
                     new_transaction_weight += this_weight
                     all_transaction_weight += this_weight
                 new_transaction_hashes.append(tx_hash)
@@ -198,15 +205,27 @@ class BaseShare(object):
             transaction_hash_refs.extend(this)
             other_transaction_hashes.append(tx_hash)
 
+        t3 = time.time()
         if transaction_hash_refs and max(transaction_hash_refs) < 2**16:
             transaction_hash_refs = array.array('H', transaction_hash_refs)
         elif transaction_hash_refs and max(transaction_hash_refs) < 2**32: # in case we see blocks with more than 65536 tx
             transaction_hash_refs = array.array('L', transaction_hash_refs)
-        
-        if all_transaction_size: 
-            print "Generating a share with %i bytes, %i WU (new: %i B, %i WU) in %i tx (%i new), plus estimated gentx of %i bytes/%i WU" % \
-           (all_transaction_size, all_transaction_weight, new_transaction_size, new_transaction_weight, len(other_transaction_hashes), len(new_transaction_hashes), cls.gentx_size, cls.gentx_weight)
-            print "Total block size, weight: %i bytes, %i WU" % (80+all_transaction_size+cls.gentx_size, 3*80+all_transaction_weight+cls.gentx_weight)
+        t4 = time.time()
+
+        if all_transaction_stripped_size:
+            print "Generating a share with %i bytes, %i WU (new: %i B, %i WU) in %i tx (%i new), plus est gentx of %i bytes/%i WU" % (
+                all_transaction_real_size,
+                all_transaction_weight,
+                new_transaction_size,
+                new_transaction_weight,
+                len(other_transaction_hashes),
+                len(new_transaction_hashes),
+                cls.gentx_size,
+                cls.gentx_weight)
+            print "Total block stripped size=%i B, full size=%i B,  weight: %i WU" % (
+                80+all_transaction_stripped_size+cls.gentx_size, 
+                80+all_transaction_real_size+cls.gentx_size, 
+                3*80+all_transaction_weight+cls.gentx_weight)
 
         included_transactions = set(other_transaction_hashes)
         removed_fees = [fee for tx_hash, fee in desired_other_transaction_hashes_and_fees if tx_hash not in included_transactions]
@@ -300,7 +319,14 @@ class BaseShare(object):
             ))
             assert share.header == header # checks merkle_root
             return share
-        
+        t5 = time.time()
+        if p2pool.BENCH: print "%8.3f ms for data.py:generate_transaction(). Parts: %8.3f %8.3f %8.3f %8.3f %8.3f " % (
+            (t5-t0)*1000.,
+            (t1-t0)*1000.,
+            (t2-t1)*1000.,
+            (t3-t2)*1000.,
+            (t4-t3)*1000.,
+            (t5-t4)*1000.)
         return share_info, gentx, other_transaction_hashes, get_share
     
     @classmethod
@@ -433,29 +459,8 @@ class BaseShare(object):
         
         update_min_protocol_version(counts, self)
 
-        #tx format: 
-        # 4 bytes for version
-        # 1-9 bytes for in-count (varint, will always be 1 byte for gentx)
-        # inputs:
-        #  32 bytes prevtx hash
-        #  4 bytes previndex
-        #  1-9 bytes scriptlen (will be 1 for gentx)
-        #  ? bytes script
-        #  4 bytes sequence number
-        # outputs:
-        #  8 bytes value (satoshis)
-        #  1 byte scriptlen (will be 1)
-        #  ? bytes script
-        #Segwit only:
-        # 1 byte marker
-        # 1 byte flag
-        # 1-9 byte witnesslen (should always be 1 for gentx)
-        # n byte witness
-
-        self.gentx_size = 4 + 1 + sum(map((lambda txin: 32+4+1+len(txin['script'])+4), gentx['tx_ins'])) + sum(map((lambda txout: 8+1+len(txout['script'])), gentx['tx_outs']))
-        self.gentx_weight = 4 * self.gentx_size
-        if 'witness' in gentx:
-            self.gentx_weight += 1+1 + sum(map((lambda x: 1+len(x)), (gentx['witness'])))
+        self.gentx_size = len(bitcoin_data.tx_id_type.pack(gentx))
+        self.gentx_weight = len(bitcoin_data.tx_type.pack(gentx)) + 3*self.gentx_size
 
         type(self).gentx_size   = self.gentx_size # saving this share's gentx size as a class variable is an ugly hack, and you're welcome to hate me for doing it. But it works.
         type(self).gentx_weight = self.gentx_weight
