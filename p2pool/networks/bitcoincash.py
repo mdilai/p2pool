@@ -17,9 +17,9 @@ PREFIX = 'ac9a8fda9a911bce'.decode('hex')
 P2P_PORT = 9339
 MIN_TARGET = 0
 MAX_TARGET = 2**256//2**32 - 1
-PERSIST = False # Set to False for solo mining or starting a new chain
+PERSIST = True # Set to False for solo mining or starting a new chain
 WORKER_PORT = 9338
-BOOTSTRAP_ADDRS = 'ml.toom.im'.split(' ') # fixme, need more seed nodes
+BOOTSTRAP_ADDRS = 'ml.toom.im woff.toom.im'.split(' ') # fixme, need more seed nodes
 ANNOUNCE_CHANNEL = '#p2pool'
 VERSION_CHECK = lambda v: None if 100000 <= v else 'Bitcoin version too old. Upgrade to 0.11.2 or newer!' # not a bug. BIP65 support is ensured by SOFTFORKS_REQUIRED
 VERSION_WARNING = lambda v: None
