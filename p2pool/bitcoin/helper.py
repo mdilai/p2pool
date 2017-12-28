@@ -112,6 +112,7 @@ def getwork(bitcoind, use_getblocktemplate=False, txidcache={}, feecache={}, fee
         fum = 100000
         while len(feefifo) > fum:
             del feecache[feefifo.pop(0)]
+    packed_transactions = [x['data'].decode('hex') for x in work['transactions'] if len(x.get('depends', [])) == 0]
     if 'height' not in work:
         work['height'] = (yield bitcoind.rpc_getblock(work['previousblockhash']))['height'] + 1
     elif p2pool.DEBUG:
