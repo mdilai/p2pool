@@ -12,7 +12,7 @@ P2P_PORT = 19333
 ADDRESS_VERSION = 111
 RPC_PORT = 19332
 RPC_CHECK = defer.inlineCallbacks(lambda bitcoind: defer.returnValue(
-            'litecoinaddress' in (yield bitcoind.rpc_help()) and
+            'litecoin' in (yield bitcoind.rpc_help()) and
             (yield bitcoind.rpc_getinfo())['testnet']
         ))
 SUBSIDY_FUNC = lambda height: 50*100000000 >> (height + 1)//840000
