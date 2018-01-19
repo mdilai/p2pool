@@ -529,7 +529,7 @@ class PreSegwitShare(BaseShare):
 class MiddleShare(BaseShare):
     VERSION = 17
     VOTING_VERSION = 17
-    SUCCESSOR = PreSegwitShare
+    SUCCESSOR = NewShare
 
 class Share(BaseShare):
     VERSION = 16
