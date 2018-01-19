@@ -270,7 +270,12 @@ class BaseShare(object):
             far_share_hash=None if last is None and height < 99 else tracker.get_nth_parent_hash(share_data['previous_share_hash'], 99),
             max_bits=max_bits,
             bits=bits,
-            timestamp=max(desired_timestamp, (previous_share.timestamp + 1)) if previous_share is not None else desired_timestamp,
+
+            timestamp=(math.clip(desired_timestamp, (
+                        (previous_share.timestamp + net.SHARE_PERIOD) - (net.SHARE_PERIOD - 1), # = previous_share.timestamp + 1
+                        (previous_share.timestamp + net.SHARE_PERIOD) + (net.SHARE_PERIOD - 1),)) if previous_share is not None else desired_timestamp
+                      ) if cls.VERSION < 32 else
+                      max(desired_timestamp, (previous_share.timestamp + 1)) if previous_share is not None else desired_timestamp,
             new_transaction_hashes=new_transaction_hashes,
             transaction_hash_refs=transaction_hash_refs,
             absheight=((previous_share.absheight if previous_share is not None else 0) + 1) % 2**32,
