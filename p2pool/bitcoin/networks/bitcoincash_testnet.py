@@ -7,18 +7,19 @@ from .. import data, helper
 from p2pool.util import pack
 
 
-P2P_PREFIX = '0b110907'.decode('hex')
+#P2P_PREFIX = '0b110907'.decode('hex') # disk magic and old netmagic
+P2P_PREFIX = 'f4e5f3f4'.decode('hex') # new net magic
 P2P_PORT = 18333
 ADDRESS_VERSION = 111
 RPC_PORT = 18332
 RPC_CHECK = defer.inlineCallbacks(lambda bitcoind: defer.returnValue(
-            'getreceivedbyaddress' in (yield bitcoind.rpc_help()) and
+            'bitcoin' in (yield bitcoind.rpc_help()) and
             (yield bitcoind.rpc_getinfo())['testnet']
         ))
 SUBSIDY_FUNC = lambda height: 50*100000000 >> (height + 1)//210000
 POW_FUNC = data.hash256
 BLOCK_PERIOD = 600 # s
-SYMBOL = 'tBTC'
+SYMBOL = 'tBCH'
 CONF_FILE_FUNC = lambda: os.path.join(os.path.join(os.environ['APPDATA'], 'Bitcoin') if platform.system() == 'Windows' else os.path.expanduser('~/Library/Application Support/Bitcoin/') if platform.system() == 'Darwin' else os.path.expanduser('~/.bitcoin'), 'bitcoin.conf')
 BLOCK_EXPLORER_URL_PREFIX = 'http://blockexplorer.com/testnet/block/'
 ADDRESS_EXPLORER_URL_PREFIX = 'http://blockexplorer.com/testnet/address/'

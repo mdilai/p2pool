@@ -274,6 +274,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
     
     def get_work(self, user, pubkey_hash, desired_share_target, desired_pseudoshare_target, worker_ip=None):
         global print_throttle
+        t0 = time.time()
         if (self.node.p2p_node is None or len(self.node.p2p_node.peers) == 0) and self.node.net.PERSIST:
             raise jsonrpc.Error_for_code(-12345)(u'p2pool is not connected to any peers')
         if self.node.best_share_var.value is None and self.node.net.PERSIST:
@@ -387,11 +388,11 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 else: # per-miner
                     local_rate = self.get_miner_rate(user)
                 if local_rate > 0:
-                    target = min(target, bitcoin_data.average_attempts_to_target(local_rate * 60 / self.share_rate))
+                    target = min(target, bitcoin_data.average_attempts_to_target(local_rate * 600 / self.share_rate))
             else: # per-node
                 local_hash_rate = self._estimate_local_hash_rate()
                 if local_hash_rate is not None:
-                    target = min(target, 1000 *
+                    target = min(target, 3000 *
                                  bitcoin_data.average_attempts_to_target((bitcoin_data.target_to_average_attempts(
                                      share_info['bits'].target)*self.node.net.SPREAD)*self.node.net.PARENT.DUST_THRESHOLD/self.current_work.value['subsidy']))
             difficulty = bitcoin_data.target_to_difficulty_alt(target, self.node.net.PARENT.DUMB_SCRYPT_DIFF)
@@ -447,6 +448,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
         received_header_hashes = set()
         
         def got_response(header, user, coinbase_nonce):
+            t0 = time.time()
             assert len(coinbase_nonce) == self.COINBASE_NONCE_LENGTH
             new_packed_gentx = packed_gentx[:-self.COINBASE_NONCE_LENGTH-4] + coinbase_nonce + packed_gentx[-4:] if coinbase_nonce != '\0'*self.COINBASE_NONCE_LENGTH else packed_gentx
             new_gentx = bitcoin_data.tx_type.unpack(new_packed_gentx) if coinbase_nonce != '\0'*self.COINBASE_NONCE_LENGTH else gentx
@@ -553,7 +555,10 @@ class WorkerBridge(worker_interface.WorkerBridge):
                     self.recent_shares_ts_work.pop(0)
                 self.local_rate_monitor.add_datum(dict(work=bitcoin_data.target_to_average_attempts(target), dead=not on_time, user=user, share_target=share_info['bits'].target))
                 self.local_addr_rate_monitor.add_datum(dict(work=bitcoin_data.target_to_average_attempts(target), pubkey_hash=pubkey_hash))
-            
+            t1 = time.time()
+            if p2pool.BENCH and (t1-t1) > .01: print "%8.3f ms for work.py:got_response()" % ((t1-t0)*1000.)
+
             return on_time
-        
+        t1 = time.time()
+        if p2pool.BENCH: print "%8.3f ms for work.py:get_work()" % ((t1-t0)*1000.)
         return ba, got_response

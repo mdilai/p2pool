@@ -466,6 +466,9 @@ def run():
     parser.add_argument('--debug',
         help='enable debugging mode',
         action='store_const', const=True, default=False, dest='debug')
+    parser.add_argument('--bench',
+        help='enable CPU performance profiling mode',
+        action='store_const', const=True, default=False, dest='bench')
     parser.add_argument('--rconsole',
         help='enable rconsole debugging mode (requires rfoo)',
         action='store_const', const=True, default=False, dest='rconsole')
@@ -577,6 +580,7 @@ def run():
         defer.setDebugging(True)
     else:
         p2pool.DEBUG = False
+    p2pool.BENCH = args.bench
     
     net_name = args.net_name + ('_testnet' if args.testnet else '')
     net = networks.nets[net_name]

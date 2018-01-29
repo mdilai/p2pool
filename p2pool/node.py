@@ -161,8 +161,17 @@ class Node(object):
         self.bitcoind = bitcoind
         self.net = net
         
+
+        self.known_txs_var = variable.VariableDict({}) # hash -> tx
+        self.mining_txs_var = variable.Variable({}) # hash -> tx
+        self.mining2_txs_var = variable.Variable({}) # hash -> tx
+        self.best_share_var = variable.Variable(None)
+        self.desired_var = variable.Variable(None)
+        self.txidcache = {}
+
         self.tracker = p2pool_data.OkayTracker(self.net)
         
+
         for share in shares:
             self.tracker.add(share)
         
@@ -185,7 +194,7 @@ class Node(object):
             while stop_signal.times == 0:
                 flag = self.factory.new_block.get_deferred()
                 try:
-                    self.bitcoind_work.set((yield helper.getwork(self.bitcoind, self.bitcoind_work.value['use_getblocktemplate'])))
+                    self.bitcoind_work.set((yield helper.getwork(self.bitcoind, self.bitcoind_work.value['use_getblocktemplate'], self.txidcache, self.known_txs_var.value)))
                 except:
                     log.err()
                 yield defer.DeferredList([flag, deferral.sleep(15)], fireOnOneCallback=True)
@@ -220,13 +229,7 @@ class Node(object):
         
         # BEST SHARE
         
-        self.known_txs_var = variable.VariableDict({}) # hash -> tx
-        self.mining_txs_var = variable.Variable({}) # hash -> tx
-        self.mining2_txs_var = variable.Variable({}) # hash -> tx
         self.get_height_rel_highest = yield height_tracker.get_height_rel_highest_func(self.bitcoind, self.factory, lambda: self.bitcoind_work.value['previous_block'], self.net)
-        
-        self.best_share_var = variable.Variable(None)
-        self.desired_var = variable.Variable(None)
         self.bitcoind_work.changed.watch(lambda _: self.set_best_share())
         self.set_best_share()
         

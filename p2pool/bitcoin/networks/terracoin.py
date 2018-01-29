@@ -12,7 +12,7 @@ P2P_PORT = 13333
 ADDRESS_VERSION = 0
 RPC_PORT = 13332
 RPC_CHECK = defer.inlineCallbacks(lambda bitcoind: defer.returnValue(
-            'terracoinaddress' in (yield bitcoind.rpc_help()) and
+            'terracoin' in (yield bitcoind.rpc_help()) and
             not (yield bitcoind.rpc_getinfo())['testnet']
         ))
 SUBSIDY_FUNC = lambda height: 20*100000000 >> (height + 1)//1050000
