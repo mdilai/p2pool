@@ -347,7 +347,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
             local_hash_rate = self._estimate_local_hash_rate()
             if local_hash_rate is not None:
                 target = min(target,
-                    bitcoin_data.average_attempts_to_target(local_hash_rate * .1)) # target 10 share responses every second by modulating pseudoshare difficulty
+                    bitcoin_data.average_attempts_to_target(local_hash_rate * 1)) # target 10 share responses every second by modulating pseudoshare difficulty
             else:
                 # If we don't yet have an estimated node hashrate, then we still need to not undershoot the difficulty.
                 # Otherwise, we might get 1 PH/s of hashrate on difficulty settings appropriate for 1 GH/s.
