@@ -185,7 +185,9 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 except:
                     if p2pool.DEBUG:
                         log.err()
-
+        if self.node.punish:
+            print "trying to punish a share by mining a low-diff share"
+            desired_share_target = bitcoin_data.difficulty_to_target(float(0.001))
         if self.args.address == 'dynamic':
             i = self.pubkeys.weighted()
             pubkey_hash = self.pubkeys.keys[i]
