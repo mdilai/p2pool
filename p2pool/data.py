@@ -6,6 +6,7 @@ import random
 import sys
 import time
 import array
+import traceback
 
 from twisted.python import log
 
@@ -357,6 +358,7 @@ class BaseShare(object):
         self.share_info = contents['share_info']
         self.hash_link = contents['hash_link']
         self.merkle_link = contents['merkle_link']
+        self.naughty = False
 
         # save some memory if we can
         txrefs = self.share_info['transaction_hash_refs']
@@ -426,13 +428,13 @@ class BaseShare(object):
     def iter_transaction_hash_refs(self):
         return zip(self.share_info['transaction_hash_refs'][::2], self.share_info['transaction_hash_refs'][1::2])
     
-    def check(self, tracker, other_txs=None):
+    def check(self, tracker, known_txs=None, block_abs_height_func=None, feecache=None):
         from p2pool import p2p
         if self.timestamp > int(time.time()) + 600:
             raise ValueError("Share timestamp is %i seconds in the future! Check your system clock." % \
                 self.timestamp - int(time.time()))
         counts = None
-        if self.share_data['previous_share_hash'] is not None:
+        if self.share_data['previous_share_hash'] is not None and block_abs_height_func is not None:
             previous_share = tracker.items[self.share_data['previous_share_hash']]
             if tracker.get_height(self.share_data['previous_share_hash']) >= self.net.CHAIN_LENGTH:
                 counts = get_desired_version_counts(tracker, tracker.get_nth_parent_hash(previous_share.hash, self.net.CHAIN_LENGTH*9//10), self.net.CHAIN_LENGTH//10)
@@ -448,11 +450,36 @@ class BaseShare(object):
                 raise p2p.PeerMisbehavingError('switch without enough history')
         
         other_tx_hashes = [tracker.items[tracker.get_nth_parent_hash(self.hash, share_count)].share_info['new_transaction_hashes'][tx_count] for share_count, tx_count in self.iter_transaction_hash_refs()]
-        if other_txs is not None and not isinstance(other_txs, dict): other_txs = dict((bitcoin_data.hash256(bitcoin_data.tx_type.pack(tx)), tx) for tx in other_txs)
+        if known_txs is not None and not isinstance(known_txs, dict):
+            print "Performing maybe-unnecessary packing and hashing"
+            known_txs = dict((bitcoin_data.hash256(bitcoin_data.tx_type.pack(tx)), tx) for tx in known_txs)
         
         share_info, gentx, other_tx_hashes2, get_share = self.generate_transaction(tracker, self.share_info['share_data'], self.header['bits'].target, self.share_info['timestamp'], self.share_info['bits'].target, self.contents['ref_merkle_link'], [(h, None) for h in other_tx_hashes], self.net,
-            known_txs=other_txs, last_txout_nonce=self.contents['last_txout_nonce'], segwit_data=self.share_info.get('segwit_data', None))
-        
+            known_txs=None, last_txout_nonce=self.contents['last_txout_nonce'], segwit_data=self.share_info.get('segwit_data', None))
+
+        # check for excessive fees
+        if self.share_data['previous_share_hash'] is not None and block_abs_height_func is not None:
+            height = (block_abs_height_func(self.header['previous_block'])+1)
+            base_subsidy = self.net.PARENT.SUBSIDY_FUNC(height)
+            #print "height == %i, base_subsidy = %i, hash = %x" % (height, base_subsidy, self.header['previous_block'])
+            fees = [feecache[x] for x in other_tx_hashes if x in feecache]
+            missing = sum([1 for x in other_tx_hashes if not x in feecache])
+            #print "Missing %i transactions of %i with %i known" % (missing, len(other_tx_hashes), len(feecache))
+            if missing == 0:
+                max_subsidy = sum(fees) + base_subsidy
+                details = "Max allowed = %i, requested subsidy = %i, share hash = %064x, miner = %s" % (max_subsidy, self.share_data['subsidy'], self.hash, bitcoin_data.script2_to_address(self.new_script, self.net.PARENT))
+                if self.share_data['subsidy'] > max_subsidy:
+                    self.naughty = True
+                    # Raising an error would make running this code fork the network. Perhaps we can include this when we fork to share version 34.
+                    # But probably not. This detection of naughty shares is still heuristic, and will sometimes fail to detect a naughty share
+                    # when the feecache is empty.
+                    # For now, we'll just punish shares via the self.naughty = True flag.
+                    # raise ValueError("Excessive block reward in share! Naughty. " + details)
+                    print "Excessive block reward in share! Naughty. " + details
+                elif self.share_data['subsidy'] < max_subsidy:
+                    print "Strainge, we received a share that did not include as many coins in the block reward as was allowed. "
+                    print "While permitted by the protocol, this causes coins to be lost forever if mined as a block, and costs us money."
+                    print details
 
         assert other_tx_hashes2 == other_tx_hashes
         if share_info != self.share_info:
@@ -470,6 +497,7 @@ class BaseShare(object):
         type(self).gentx_size   = self.gentx_size # saving this share's gentx size as a class variable is an ugly hack, and you're welcome to hate me for doing it. But it works.
         type(self).gentx_weight = self.gentx_weight
 
+        if not self.naughty: print "Received good diff %.2e share %064x from %s" % (self.net.PARENT.DUMB_SCRYPT_DIFF*float(bitcoin_data.target_to_difficulty(self.target)), self.hash, bitcoin_data.script2_to_address(self.new_script, self.net.PARENT))
         return gentx # only used by as_block
     
     def get_other_tx_hashes(self, tracker):
@@ -493,7 +521,8 @@ class BaseShare(object):
     def should_punish_reason(self, previous_block, bits, tracker, known_txs):
         if self.pow_hash <= self.header['bits'].target:
             return -1, 'block solution'
-        
+        if self.naughty:
+            return True, 'naughty share (excessive block reward or otherwise would make an invalid block)'
         other_txs = self._get_other_txs(tracker, known_txs)
         if other_txs is None:
             pass
@@ -588,14 +617,14 @@ class OkayTracker(forest.Tracker):
         )), subset_of=self)
         self.get_cumulative_weights = WeightsSkipList(self)
 
-    def attempt_verify(self, share):
+    def attempt_verify(self, share, block_abs_height_func, known_txs, feecache):
         if share.hash in self.verified.items:
             return True
         height, last = self.get_height_and_last(share.hash)
         if height < self.net.CHAIN_LENGTH + 1 and last is not None:
             raise AssertionError()
         try:
-            share.check(self)
+            share.check(self, known_txs, block_abs_height_func=block_abs_height_func, feecache=feecache)
         except:
             log.err(None, 'Share check failed: %064x -> %064x' % (share.hash, share.previous_hash if share.previous_hash is not None else 0))
             return False
@@ -603,7 +632,7 @@ class OkayTracker(forest.Tracker):
             self.verified.add(share)
             return True
     
-    def think(self, block_rel_height_func, previous_block, bits, known_txs):
+    def think(self, block_rel_height_func, block_abs_height_func, previous_block, bits, known_txs, feecache):
         desired = set()
         bad_peer_addresses = set()
         
@@ -617,7 +646,7 @@ class OkayTracker(forest.Tracker):
             head_height, last = self.get_height_and_last(head)
             
             for share in self.get_chain(head, head_height if last is None else min(5, max(0, head_height - self.net.CHAIN_LENGTH))):
-                if self.attempt_verify(share):
+                if self.attempt_verify(share, block_abs_height_func, known_txs, feecache):
                     break
                 bads.append(share.hash)
             else:
@@ -651,7 +680,7 @@ class OkayTracker(forest.Tracker):
             get = min(want, can)
             #print 'Z', head_height, last_hash is None, last_height, last_last_hash is None, want, can, get
             for share in self.get_chain(last_hash, get):
-                if not self.attempt_verify(share):
+                if not self.attempt_verify(share, block_abs_height_func, known_txs, feecache):
                     break
             if head_height < self.net.CHAIN_LENGTH and last_last_hash is not None:
                 desired.add((

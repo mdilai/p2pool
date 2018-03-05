@@ -168,6 +168,8 @@ class Node(object):
         self.best_share_var = variable.Variable(None)
         self.desired_var = variable.Variable(None)
         self.txidcache = {}
+        self.feecache = {}
+        self.feefifo = []
 
         self.tracker = p2pool_data.OkayTracker(self.net)
         
@@ -194,7 +196,7 @@ class Node(object):
             while stop_signal.times == 0:
                 flag = self.factory.new_block.get_deferred()
                 try:
-                    self.bitcoind_work.set((yield helper.getwork(self.bitcoind, self.bitcoind_work.value['use_getblocktemplate'], self.txidcache, self.known_txs_var.value)))
+                    self.bitcoind_work.set((yield helper.getwork(self.bitcoind, self.bitcoind_work.value['use_getblocktemplate'], self.txidcache, self.feecache, self.feefifo, self.known_txs_var.value)))
                 except:
                     log.err()
                 yield defer.DeferredList([flag, deferral.sleep(15)], fireOnOneCallback=True)
@@ -229,7 +231,7 @@ class Node(object):
         
         # BEST SHARE
         
-        self.get_height_rel_highest = yield height_tracker.get_height_rel_highest_func(self.bitcoind, self.factory, lambda: self.bitcoind_work.value['previous_block'], self.net)
+        self.get_height_rel_highest, self.get_height = yield height_tracker.get_height_funcs(self.bitcoind, self.factory, lambda: self.bitcoind_work.value['previous_block'], self.net)
         self.bitcoind_work.changed.watch(lambda _: self.set_best_share())
         self.set_best_share()
         
@@ -293,8 +295,8 @@ class Node(object):
         stop_signal.watch(t.stop)
     
     def set_best_share(self):
-        best, desired, decorated_heads, bad_peer_addresses = self.tracker.think(self.get_height_rel_highest, self.bitcoind_work.value['previous_block'], self.bitcoind_work.value['bits'], self.known_txs_var.value)
-        
+        best, desired, decorated_heads, bad_peer_addresses = self.tracker.think(self.get_height_rel_highest, self.get_height, self.bitcoind_work.value['previous_block'], self.bitcoind_work.value['bits'], self.known_txs_var.value, self.feecache)
+
         self.best_share_var.set(best)
         self.desired_var.set(desired)
         if self.p2p_node is not None:
@@ -309,7 +311,7 @@ class Node(object):
         return p2pool_data.get_expected_payouts(self.tracker, self.best_share_var.value, self.bitcoind_work.value['bits'].target, self.bitcoind_work.value['subsidy'], self.net)
     
     def clean_tracker(self):
-        best, desired, decorated_heads, bad_peer_addresses = self.tracker.think(self.get_height_rel_highest, self.bitcoind_work.value['previous_block'], self.bitcoind_work.value['bits'], self.known_txs_var.value)
+        best, desired, decorated_heads, bad_peer_addresses = self.tracker.think(self.get_height_rel_highest, self.get_height, self.bitcoind_work.value['previous_block'], self.bitcoind_work.value['bits'], self.known_txs_var.value, self.feecache)
         
         # eat away at heads
         if decorated_heads:
