@@ -185,9 +185,6 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 except:
                     if p2pool.DEBUG:
                         log.err()
-        if self.node.punish:
-            print "trying to punish a share by mining a low-diff share"
-            desired_share_target = bitcoin_data.difficulty_to_target(float(0.001))
         if self.args.address == 'dynamic':
             i = self.pubkeys.weighted()
             pubkey_hash = self.pubkeys.keys[i]
@@ -298,6 +295,9 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 desired_share_target = min(desired_share_target,
                     bitcoin_data.average_attempts_to_target(local_hash_rate * self.node.net.SHARE_PERIOD / 0.0167)) # limit to 1.67% of pool shares by modulating share difficulty
             
+            if self.node.punish:
+                print "trying to punish a share by mining a low-diff share"
+                desired_share_target = bitcoin_data.difficulty_to_target(1.)
             local_addr_rates = self.get_local_addr_rates()
             lookbehind = 3600//self.node.net.SHARE_PERIOD
             block_subsidy = self.node.bitcoind_work.value['subsidy']
@@ -374,8 +374,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
         else:
             current_time = time.time()
             if (current_time - print_throttle) > 5.0:
-                print 'New work for %s! Diff: %.02f Share diff: %.02f Block value: %.2f %s (%i tx, %.0f kB)' % (
-                    bitcoin_data.pubkey_hash_to_address(pubkey_hash, self.node.net.PARENT),
+                print 'New work! Diff: %.02f Share diff: %.02f Block value: %.2f %s (%i tx, %.0f kB)' % (
                     bitcoin_data.target_to_difficulty(target),
                     bitcoin_data.target_to_difficulty(share_info['bits'].target),
                     self.current_work.value['subsidy']*1e-8, self.node.net.PARENT.SYMBOL,

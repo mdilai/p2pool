@@ -213,7 +213,7 @@ class BaseShare(object):
             transaction_hash_refs = array.array('L', transaction_hash_refs)
         t4 = time.time()
 
-        if all_transaction_stripped_size:
+        if all_transaction_stripped_size and p2pool.DEBUG:
             print "Generating a share with %i bytes, %i WU (new: %i B, %i WU) in %i tx (%i new), plus est gentx of %i bytes/%i WU" % (
                 all_transaction_real_size,
                 all_transaction_weight,
@@ -358,7 +358,7 @@ class BaseShare(object):
         self.share_info = contents['share_info']
         self.hash_link = contents['hash_link']
         self.merkle_link = contents['merkle_link']
-        self.naughty = False
+        self.naughty = 0
 
         # save some memory if we can
         txrefs = self.share_info['transaction_hash_refs']
@@ -469,7 +469,7 @@ class BaseShare(object):
                 max_subsidy = sum(fees) + base_subsidy
                 details = "Max allowed = %i, requested subsidy = %i, share hash = %064x, miner = %s" % (max_subsidy, self.share_data['subsidy'], self.hash, bitcoin_data.script2_to_address(self.new_script, self.net.PARENT))
                 if self.share_data['subsidy'] > max_subsidy:
-                    self.naughty = True
+                    self.naughty = 1
                     # Raising an error would make running this code fork the network. Perhaps we can include this when we fork to share version 34.
                     # But probably not. This detection of naughty shares is still heuristic, and will sometimes fail to detect a naughty share
                     # when the feecache is empty.
@@ -477,9 +477,16 @@ class BaseShare(object):
                     # raise ValueError("Excessive block reward in share! Naughty. " + details)
                     print "Excessive block reward in share! Naughty. " + details
                 elif self.share_data['subsidy'] < max_subsidy:
-                    print "Strainge, we received a share that did not include as many coins in the block reward as was allowed. "
+                    print "Strange, we received a share that did not include as many coins in the block reward as was allowed. "
                     print "While permitted by the protocol, this causes coins to be lost forever if mined as a block, and costs us money."
                     print details
+        if tracker.items[self.share_data['previous_share_hash']].naughty:
+            print "naughty ancestor found %i generations ago" % tracker.items[self.share_data['previous_share_hash']].naughty
+            # I am not easily angered ...
+            print "I will not fail to punish children and grandchildren to the third and fourth generation for the sins of their parents."
+            self.naughty = 1 + tracker.items[self.share_data['previous_share_hash']].naughty
+            if self.naughty > 6:
+                self.naughty = 0
 
         assert other_tx_hashes2 == other_tx_hashes
         if share_info != self.share_info:
@@ -497,7 +504,8 @@ class BaseShare(object):
         type(self).gentx_size   = self.gentx_size # saving this share's gentx size as a class variable is an ugly hack, and you're welcome to hate me for doing it. But it works.
         type(self).gentx_weight = self.gentx_weight
 
-        if not self.naughty: print "Received good diff %.2e share %064x from %s" % (self.net.PARENT.DUMB_SCRYPT_DIFF*float(bitcoin_data.target_to_difficulty(self.target)), self.hash, bitcoin_data.script2_to_address(self.new_script, self.net.PARENT))
+        if not self.naughty: print "Received good share: diff=%.2e hash=%064x miner=%s" % (self.net.PARENT.DUMB_SCRYPT_DIFF*float(bitcoin_data.target_to_difficulty(self.target)), self.hash, bitcoin_data.script2_to_address(self.new_script, self.net.PARENT))
+        else: print "Received naughty=%i share: diff=%.2e hash=%064x miner=%s" % (self.naughty, self.net.PARENT.DUMB_SCRYPT_DIFF*float(bitcoin_data.target_to_difficulty(self.target)), self.hash, bitcoin_data.script2_to_address(self.new_script, self.net.PARENT))
         return gentx # only used by as_block
     
     def get_other_tx_hashes(self, tracker):
@@ -521,20 +529,20 @@ class BaseShare(object):
     def should_punish_reason(self, previous_block, bits, tracker, known_txs):
         if self.pow_hash <= self.header['bits'].target:
             return -1, 'block solution'
+        if self.naughty == 1:
+            return self.naughty, 'naughty share (excessive block reward or otherwise would make an invalid block)'
         if self.naughty:
-            return True, 'naughty share (excessive block reward or otherwise would make an invalid block)'
+            return self.naughty, 'descendent of naughty share                                                    '
         other_txs = self._get_other_txs(tracker, known_txs)
         if other_txs is None:
             pass
         else:
-            all_txs_size = sum(bitcoin_data.tx_type.packed_size(tx) for tx in other_txs)
-            stripped_txs_size = sum(bitcoin_data.tx_id_type.packed_size(tx) for tx in other_txs)
-            if p2pool.DEBUG:
-                print "stripped_txs_size = %i, all_txs_size = %i, weight = %i" % (stripped_txs_size, all_txs_size, all_txs_size + 3 * stripped_txs_size)
-                print "Block size = %i, block weight = %i" %(stripped_txs_size + 80 + self.gentx_size , all_txs_size + 3 * stripped_txs_size + 4*80 + self.gentx_weight)
-            if all_txs_size + 3 * stripped_txs_size + 4*80 + self.gentx_weight > tracker.net.BLOCK_MAX_WEIGHT:
+            if not hasattr(self, 'all_tx_size'):
+                self.all_txs_size = sum(bitcoin_data.tx_type.packed_size(tx) for tx in other_txs)
+                self.stripped_txs_size = sum(bitcoin_data.tx_id_type.packed_size(tx) for tx in other_txs)
+            if self.all_txs_size + 3 * self.stripped_txs_size + 4*80 + self.gentx_weight > tracker.net.BLOCK_MAX_WEIGHT:
                 return True, 'txs over block weight limit'
-            if stripped_txs_size + 80 + self.gentx_size > tracker.net.BLOCK_MAX_SIZE:
+            if self.stripped_txs_size + 80 + self.gentx_size > tracker.net.BLOCK_MAX_SIZE:
                 return True, 'txs over block size limit'
         
         return False, None
@@ -700,14 +708,29 @@ class OkayTracker(forest.Tracker):
         
         # decide best verified head
         decorated_heads = sorted(((
-            self.verified.get_work(self.verified.get_nth_parent_hash(h, min(5, self.verified.get_height(h)))),
+            self.verified.get_work(self.verified.get_nth_parent_hash(h, min(5, self.verified.get_height(h)))) -
+            min(self.items[h].should_punish_reason(previous_block, bits, self, known_txs)[0], 1) * bitcoin_data.target_to_average_attempts(self.items[h].target),
             #self.items[h].peer_addr is None,
             -self.items[h].should_punish_reason(previous_block, bits, self, known_txs)[0],
+            #-self.items[h].should_punish_reason(previous_block, bits, self, known_txs)[0] * bitcoin_data.target_to_average_attempts(self.items[h].target),
             -self.items[h].time_seen,
         ), h) for h in self.verified.tails.get(best_tail, []))
+        traditional_sort = sorted(((
+            self.verified.get_work(self.verified.get_nth_parent_hash(h, min(5, self.verified.get_height(h)))),
+            #self.items[h].peer_addr is None,
+            -self.items[h].time_seen, # assume they can't tell we should punish this share and will be sorting based on time
+            -self.items[h].should_punish_reason(previous_block, bits, self, known_txs)[0],
+        ), h) for h in self.verified.tails.get(best_tail, []))
+        punish_aggressively = traditional_sort[-1][0][2]
+        if punish_aggressively:
+            print "Other nodes are going to follow a share we want to punish! Time to hulk up."
+
         if p2pool.DEBUG:
             print len(decorated_heads), 'heads. Top 10:'
             for score, head_hash in decorated_heads[-10:]:
+                print '   ', format_hash(head_hash), format_hash(self.items[head_hash].previous_hash), score
+            print "Traditional sort:"
+            for score, head_hash in traditional_sort[-10:]:
                 print '   ', format_hash(head_hash), format_hash(self.items[head_hash].previous_hash), score
         best_head_score, best = decorated_heads[-1] if decorated_heads else (None, None)
 
@@ -715,9 +738,25 @@ class OkayTracker(forest.Tracker):
         if best is not None:
             best_share = self.items[best]
             punish, punish_reason = best_share.should_punish_reason(previous_block, bits, self, known_txs)
-            if punish > 0:
+            while punish > 0:
                 print 'Punishing share for %r! Jumping from %s to %s!' % (punish_reason, format_hash(best), format_hash(best_share.previous_hash))
                 best = best_share.previous_hash
+                best_share = self.items[best]
+                punish, punish_reason = best_share.should_punish_reason(previous_block, bits, self, known_txs)
+                if not punish:
+                    def best_descendent(hsh, limit=20):
+                        child_hashes = self.reverse.get(hsh, set())
+                        best_kids = sorted((best_descendent(child, limit-1) for child in child_hashes if not self.items[child].naughty))
+                        if not best_kids or limit<0: # in case the only children are naughty
+                            return 0, hsh
+                        return (best_kids[-1][0]+1, best_kids[-1][1])
+                    try:
+                        gens, hsh = best_descendent(best)
+                        if p2pool.DEBUG: print "best_descendent went %i generations for share %s from %s" % (gens, format_hash(hsh), format_hash(best))
+                        best = hsh
+                        best_share = self.items[best]
+                    except:
+                        traceback.print_exc()
             
             timestamp_cutoff = min(int(time.time()), best_share.timestamp) - 3600
             target_cutoff = int(2**256//(self.net.SHARE_PERIOD*best_tail_score[1] + 1) * 2 + .5) if best_tail_score[1] is not None else 2**256-1
@@ -730,7 +769,7 @@ class OkayTracker(forest.Tracker):
             for peer_addr, hash, ts, targ in desired:
                 print '   ', None if peer_addr is None else '%s:%i' % peer_addr, format_hash(hash), math.format_dt(time.time() - ts), bitcoin_data.target_to_difficulty(targ), ts >= timestamp_cutoff, targ <= target_cutoff
         
-        return best, [(peer_addr, hash) for peer_addr, hash, ts, targ in desired if ts >= timestamp_cutoff], decorated_heads, bad_peer_addresses, punish
+        return best, [(peer_addr, hash) for peer_addr, hash, ts, targ in desired if ts >= timestamp_cutoff], decorated_heads, bad_peer_addresses, punish_aggressively
     
     def score(self, share_hash, block_rel_height_func):
         # returns approximate lower bound on chain's hashrate in the last self.net.CHAIN_LENGTH*15//16*self.net.SHARE_PERIOD time
