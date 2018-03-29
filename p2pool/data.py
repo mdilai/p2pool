@@ -563,18 +563,13 @@ class PreSegwitShare(BaseShare):
     VOTING_VERSION = 32
     SUCCESSOR = NewShare
 
-class MiddleShare(BaseShare):
+class Share(BaseShare):
     VERSION = 17
     VOTING_VERSION = 17
     SUCCESSOR = NewShare
 
-class Share(BaseShare):
-    VERSION = 16
-    VOTING_VERSION = 16
-    SUCCESSOR = MiddleShare # could we just jump straight to NewShare? Probably, but untested.
 
-
-share_versions = {s.VERSION:s for s in [NewShare, PreSegwitShare, MiddleShare, Share]}
+share_versions = {s.VERSION:s for s in [NewShare, PreSegwitShare, Share]}
 
 class WeightsSkipList(forest.TrackerSkipList):
     # share_count, weights, total_weight
