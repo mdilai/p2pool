@@ -480,7 +480,7 @@ class BaseShare(object):
                     print "Strange, we received a share that did not include as many coins in the block reward as was allowed. "
                     print "While permitted by the protocol, this causes coins to be lost forever if mined as a block, and costs us money."
                     print details
-        if tracker.items[self.share_data['previous_share_hash']] and tracker.items[self.share_data['previous_share_hash']].naughty:
+        if self.share_data['previous_share_hash'] and tracker.items[self.share_data['previous_share_hash']].naughty:
             print "naughty ancestor found %i generations ago" % tracker.items[self.share_data['previous_share_hash']].naughty
             # I am not easily angered ...
             print "I will not fail to punish children and grandchildren to the third and fourth generation for the sins of their parents."
