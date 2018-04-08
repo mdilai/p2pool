@@ -205,7 +205,6 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 except:
                     if p2pool.DEBUG:
                         log.err()
-
         if self.args.address == 'dynamic':
             i = self.pubkeys.weighted()
             pubkey_hash = self.pubkeys.keys[i]
@@ -332,6 +331,10 @@ class WorkerBridge(worker_interface.WorkerBridge):
             if local_hash_rate > 0.0:
                 desired_share_target = min(desired_share_target,
                     bitcoin_data.average_attempts_to_target(local_hash_rate * self.node.net.SHARE_PERIOD / 0.0167)) # limit to 1.67% of pool shares by modulating share difficulty
+            
+            if self.node.punish:
+                print "trying to punish a share by mining a low-diff share"
+                desired_share_target = bitcoin_data.difficulty_to_target(1.)
             lookbehind = 3600//self.node.net.SHARE_PERIOD
             block_subsidy = self.node.bitcoind_work.value['subsidy']
             if previous_share is not None and self.node.tracker.get_height(previous_share.hash) > lookbehind:

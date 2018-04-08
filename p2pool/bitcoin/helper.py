@@ -15,7 +15,7 @@ def check(bitcoind, net, args):
         print >>sys.stderr, "    Check failed! Make sure that you're connected to the right bitcoind with --bitcoind-rpc-port, and that it has finished syncing!"
         raise deferral.RetrySilentlyException()
     
-    version_check_result = net.VERSION_CHECK((yield bitcoind.rpc_getinfo())['version'])
+    version_check_result = net.VERSION_CHECK((yield bitcoind.rpc_getnetworkinfo())['version'])
     if version_check_result == True: version_check_result = None # deprecated
     if version_check_result == False: version_check_result = 'Coin daemon too old! Upgrade!' # deprecated
     if version_check_result is not None:
@@ -45,7 +45,7 @@ def check(bitcoind, net, args):
 
 @deferral.retry('Error getting work from bitcoind:', 3)
 @defer.inlineCallbacks
-def getwork(bitcoind, use_getblocktemplate=False, txidcache={}, known_txs={}):
+def getwork(bitcoind, use_getblocktemplate=False, txidcache={}, feecache={}, feefifo=[], known_txs={}):
     def go():
         if use_getblocktemplate:
             return bitcoind.rpc_getblocktemplate(dict(mode='template', rules=['segwit']))
@@ -76,6 +76,7 @@ def getwork(bitcoind, use_getblocktemplate=False, txidcache={}, known_txs={}):
     knownhits = 0
     knownmisses = 0
     for x in work['transactions']:
+        fee = x['fee']
         x = x['data'] if isinstance(x, dict) else x
         packed = None
         if x in txidcache:
@@ -97,11 +98,20 @@ def getwork(bitcoind, use_getblocktemplate=False, txidcache={}, known_txs={}):
                 packed = x.decode('hex')
             unpacked = bitcoin_data.tx_type.unpack(packed)
         unpacked_transactions.append(unpacked)
+        # The only place where we can get information on transaction fees is in GBT results, so we need to store those
+        # for a while so we can spot shares that miscalculate the block reward
+        if not txid in feecache:
+            feecache[txid] = fee
+            feefifo.append(txid)
 
     if time.time() - txidcache['start'] > 30*60.:
         keepers = {(x['data'] if isinstance(x, dict) else x):txid for x, txid in zip(work['transactions'], txhashes)}
         txidcache.clear()
         txidcache.update(keepers)
+        # limit the fee cache to 100,000 entries, which should be about 10-20 MB
+        fum = 100000
+        while len(feefifo) > fum:
+            del txidcache[feefifo.pop(0)]
 
     if 'height' not in work:
         work['height'] = (yield bitcoind.rpc_getblock(work['previousblockhash']))['height'] + 1
