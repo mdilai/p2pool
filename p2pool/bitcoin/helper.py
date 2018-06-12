@@ -103,15 +103,12 @@ def getwork(bitcoind, use_getblocktemplate=False, txidcache={}, feecache={}, fee
         if not txid in feecache:
             feecache[txid] = fee
             feefifo.append(txid)
-
+    # clear the txidcache every 30 minutes
     if time.time() - txidcache['start'] > 30*60.:
         keepers = {(x['data'] if isinstance(x, dict) else x):txid for x, txid in zip(work['transactions'], txhashes)}
         txidcache.clear()
         txidcache.update(keepers)
-        # limit the fee cache to 100,000 entries, which should be about 10-20 MB
-        fum = 100000
-        while len(feefifo) > fum:
-            del txidcache[feefifo.pop(0)]
+        feefifo[:] = txhashes
 
     if 'height' not in work:
         work['height'] = (yield bitcoind.rpc_getblock(work['previousblockhash']))['height'] + 1
