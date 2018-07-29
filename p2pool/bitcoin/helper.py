@@ -111,8 +111,7 @@ def getwork(bitcoind, use_getblocktemplate=False, txidcache={}, feecache={}, fee
         # limit the fee cache to 100,000 entries, which should be about 10-20 MB
         fum = 100000
         while len(feefifo) > fum:
-            del txidcache[feefifo.pop(0)]
-
+            del feecache[feefifo.pop(0)]
     if 'height' not in work:
         work['height'] = (yield bitcoind.rpc_getblock(work['previousblockhash']))['height'] + 1
     elif p2pool.DEBUG:
