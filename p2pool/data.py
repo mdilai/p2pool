@@ -252,7 +252,8 @@ class BaseShare(object):
             raise ValueError()
         
         dests = sorted(amounts.iterkeys(), key=lambda script: (script == DONATION_SCRIPT, amounts[script], script))[-4000:] # block length limit, unlikely to ever be hit
-        print "found %i payment dests. Antminer S9s may crash when this is close to 226." % len(dests)
+        if len(dests) >= 200:
+            print "found %i payment dests. Antminer S9s may crash when this is close to 226." % len(dests)
 
         segwit_activated = is_segwit_activated(cls.VERSION, net)
         if segwit_data is None and known_txs is None:
