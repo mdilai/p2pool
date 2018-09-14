@@ -29,7 +29,7 @@ class StratumRPCMiningProvider(object):
         ]
     
     def rpc_authorize(self, username, password):
-        self.username = username
+        self.username = username.strip()
         
         reactor.callLater(0, self._send_work)
     
@@ -56,6 +56,7 @@ class StratumRPCMiningProvider(object):
         self.handler_map[jobid] = x, got_response
     
     def rpc_submit(self, worker_name, job_id, extranonce2, ntime, nonce, *args):
+        worker_name = worker_name.strip()
         if job_id not in self.handler_map:
             print >>sys.stderr, '''Couldn't link returned work's job id with its handler. This should only happen if this process was recently restarted!'''
             #self.other.svc_client.rpc_reconnect().addErrback(lambda err: None)
