@@ -32,6 +32,7 @@ class StratumRPCMiningProvider(object):
         self.username = username.strip()
         
         reactor.callLater(0, self._send_work)
+        return True
     
     def _send_work(self):
         try:
