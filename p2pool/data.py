@@ -452,7 +452,6 @@ class BaseShare(object):
                 raise p2p.PeerMisbehavingError('switch without enough history')
         
         other_tx_hashes = [tracker.items[tracker.get_nth_parent_hash(self.hash, share_count)].share_info['new_transaction_hashes'][tx_count] for share_count, tx_count in self.iter_transaction_hash_refs()]
-        all_tx_hashes = other_tx_hashes + self.new_transaction_hashes
         if known_txs is not None and not isinstance(known_txs, dict):
             print "Performing maybe-unnecessary packing and hashing"
             known_txs = dict((bitcoin_data.hash256(bitcoin_data.tx_type.pack(tx)), tx) for tx in known_txs)
@@ -465,9 +464,9 @@ class BaseShare(object):
             height = (block_abs_height_func(self.header['previous_block'])+1)
             base_subsidy = self.net.PARENT.SUBSIDY_FUNC(height)
             #print "height == %i, base_subsidy = %i, hash = %x" % (height, base_subsidy, self.header['previous_block'])
-            fees = [feecache[x] for x in all_tx_hashes if x in feecache]
-            missing = sum([1 for x in all_tx_hashes if not x in feecache])
-            #print "Missing %i transactions of %i with %i known" % (missing, len(all_tx_hashes), len(feecache))
+            fees = [feecache[x] for x in other_tx_hashes if x in feecache]
+            missing = sum([1 for x in other_tx_hashes if not x in feecache])
+            #print "Missing %i transactions of %i with %i known" % (missing, len(other_tx_hashes), len(feecache))
             if missing == 0:
                 max_subsidy = sum(fees) + base_subsidy
                 details = "Max allowed = %i, requested subsidy = %i, share hash = %064x, miner = %s" % (max_subsidy, self.share_data['subsidy'], self.hash, bitcoin_data.script2_to_address(self.new_script, self.net.PARENT))
@@ -479,7 +478,6 @@ class BaseShare(object):
                     # For now, we'll just punish shares via the self.naughty = True flag.
                     # raise ValueError("Excessive block reward in share! Naughty. " + details)
                     print "Excessive block reward in share! Naughty. " + details
-                    print "fees: ", fees
                 elif self.share_data['subsidy'] < max_subsidy:
                     print "Strange, we received a share that did not include as many coins in the block reward as was allowed. "
                     print "While permitted by the protocol, this causes coins to be lost forever if mined as a block, and costs us money."
@@ -721,7 +719,7 @@ class OkayTracker(forest.Tracker):
             -self.items[h].should_punish_reason(previous_block, bits, self, known_txs)[0],
         ), h) for h in self.verified.tails.get(best_tail, []))
         punish_aggressively = traditional_sort[-1][0][2] if traditional_sort else False
-        if punish_aggressively:
+        if punish_aggressively > 0:
             print "Other nodes are going to follow a share we want to punish! Time to hulk up."
 
         if p2pool.DEBUG:
