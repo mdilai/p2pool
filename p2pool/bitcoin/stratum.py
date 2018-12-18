@@ -45,7 +45,7 @@ class StratumRPCMiningProvider(object):
             #min-bit-count from miner is mandatory but we dont use it
             minbitcount = extensionParameters['version-rolling.min-bit-count']
             #according to the spec, pool should return largest mask possible (to support mining proxies)
-            return {"version-rolling" : True, "version-rolling.mask" : '{:08x}'.format(self.pool_version_mask)}
+            return {"version-rolling" : True, "version-rolling.mask" : '{:08x}'.format(self.pool_version_mask&(int(miner_mask,16)))}
             #pool can send mining.set_version_mask at any time if the pool mask changes
 
         if 'minimum-difficulty' in extensions:
