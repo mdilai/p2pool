@@ -356,6 +356,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 # 1/3000th the difficulty of a full share should be a reasonable upper bound. That way, if
                 # one node has the whole p2pool hashrate, it will still only need to process one pseudoshare
                 # every ~0.01 seconds.
+                block_subsidy = self.node.bitcoind_work.value['subsidy']
                 target = min(target, 3000 * bitcoin_data.average_attempts_to_target((bitcoin_data.target_to_average_attempts(
                     self.node.bitcoind_work.value['bits'].target)*self.node.net.SPREAD)*self.node.net.PARENT.DUST_THRESHOLD/block_subsidy))
         else:
