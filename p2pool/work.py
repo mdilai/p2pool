@@ -482,8 +482,15 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 if not on_time:
                     self.my_doa_share_hashes.add(share.hash)
                 
-                self.node.tracker.add(share)
-                self.node.set_best_share()
+                sibling_count = len(self.node.tracker.reverse.get(share.previous_hash, set()))
+                if on_time or sibling_count < 4:
+                    self.node.tracker.add(share)
+                else:
+                    print "Already have %i DOA shares with this parent. Not adding more." % sibling_count
+                if on_time:
+                    self.node.set_best_share()
+                else:
+                    print "Not considering work switching to DOA share"
                 
                 try:
                     if (pow_hash <= header['bits'].target or p2pool.DEBUG) and self.node.p2p_node is not None:
@@ -492,7 +499,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
                     log.err(None, 'Error forwarding block solution:')
                 
                 self.share_received.happened(bitcoin_data.target_to_average_attempts(share.target), not on_time, share.hash)
-            
+
             if pow_hash > target:
                 print 'Worker %s submitted share with hash > target:' % (user,)
                 print '    Hash:   %56x' % (pow_hash,)
