@@ -30,7 +30,9 @@ class StratumRPCMiningProvider(object):
         ]
     
     def rpc_authorize(self, username, password):
-        print '>>>Authorize:' + username
+        if not hasattr(self, 'authorized'): # authorize can be called many times in one connection
+            print '>>>Authorize: %s from %s' % (username, self.transport.getPeer().host)
+            self.authorized = username
         self.username = username.strip()
         
         reactor.callLater(0, self._send_work)
