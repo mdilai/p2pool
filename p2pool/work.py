@@ -109,6 +109,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
                     height=t['height'] + 1,
                     time=max(int(time.time() + 0.5), bb['timestamp'] + 1),
                     transactions=[],
+                    transaction_hashes=[],
                     transaction_fees=[],
                     merkle_link=bitcoin_data.calculate_merkle_link([None], 0),
                     subsidy=self.node.net.PARENT.SUBSIDY_FUNC(self.node.bitcoind_work.value['height']),
@@ -261,7 +262,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
             mm_data = ''
             mm_later = []
         
-        tx_hashes = [bitcoin_data.hash256(bitcoin_data.tx_type.pack(tx)) for tx in self.current_work.value['transactions']]
+        tx_hashes = self.current_work.value['transaction_hashes']
         tx_map = dict(zip(tx_hashes, self.current_work.value['transactions']))
 
         self.node.mining2_txs_var.set(tx_map) # let node.py know not to evict these transactions
