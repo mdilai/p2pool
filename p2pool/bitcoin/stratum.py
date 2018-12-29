@@ -10,6 +10,7 @@ from p2pool.util import expiring_dict, jsonrpc, pack
 
 class StratumRPCMiningProvider(object):
     def __init__(self, wb, other, transport):
+        self.pool_version_mask = 0x1fffe000
         self.wb = wb
         self.other = other
         self.transport = transport
@@ -29,10 +30,31 @@ class StratumRPCMiningProvider(object):
         ]
     
     def rpc_authorize(self, username, password):
+        if not hasattr(self, 'authorized'): # authorize can be called many times in one connection
+            print '>>>Authorize: %s from %s' % (username, self.transport.getPeer().host)
+            self.authorized = username
         self.username = username.strip()
         
         reactor.callLater(0, self._send_work)
-    
+        return True
+
+    def rpc_configure(self, extensions, extensionParameters):
+        #extensions is a list of extension codes defined in BIP310
+        #extensionParameters is a dict of parameters for each extension code
+        if 'version-rolling' in extensions:
+            #mask from miner is mandatory but we dont use it
+            miner_mask = extensionParameters['version-rolling.mask']
+            #min-bit-count from miner is mandatory but we dont use it
+            minbitcount = extensionParameters['version-rolling.min-bit-count']
+            #according to the spec, pool should return largest mask possible (to support mining proxies)
+            return {"version-rolling" : True, "version-rolling.mask" : '{:08x}'.format(self.pool_version_mask&(int(miner_mask,16)))}
+            #pool can send mining.set_version_mask at any time if the pool mask changes
+
+        if 'minimum-difficulty' in extensions:
+            print 'Extension method minimum-difficulty not implemented'
+        if 'subscribe-extranonce' in extensions:
+            print 'Extension method subscribe-extranonce not implemented'
+
     def _send_work(self):
         try:
             x, got_response = self.wb.get_work(*self.wb.preprocess_request('' if self.username is None else self.username))
@@ -55,7 +77,8 @@ class StratumRPCMiningProvider(object):
         ).addErrback(lambda err: None)
         self.handler_map[jobid] = x, got_response
     
-    def rpc_submit(self, worker_name, job_id, extranonce2, ntime, nonce, *args):
+    def rpc_submit(self, worker_name, job_id, extranonce2, ntime, nonce, version_bits = None, *args):
+        #asicboost: version_bits is the version mask that the miner used
         worker_name = worker_name.strip()
         if job_id not in self.handler_map:
             print >>sys.stderr, '''Couldn't link returned work's job id with its handler. This should only happen if this process was recently restarted!'''
@@ -65,8 +88,22 @@ class StratumRPCMiningProvider(object):
         coinb_nonce = extranonce2.decode('hex')
         assert len(coinb_nonce) == self.wb.COINBASE_NONCE_LENGTH
         new_packed_gentx = x['coinb1'] + coinb_nonce + x['coinb2']
+
+        job_version = x['version']
+        nversion = job_version
+        #check if miner changed bits that they were not supposed to change
+        #print version_bits
+        if version_bits:
+            if ((~self.pool_version_mask) & int(version_bits,16)) != 0:
+                #todo: how to raise error back to miner?
+                #protocol does not say error needs to be returned but ckpool returns
+                #{"error": "Invalid version mask", "id": "id", "result":""}
+                raise ValueError("Invalid version mask {0}".format(version_bits))
+            nversion = (job_version & ~self.pool_version_mask) | (int(version_bits,16) & self.pool_version_mask)
+            #nversion = nversion & int(version_bits,16)
+
         header = dict(
-            version=x['version'],
+            version=nversion,
             previous_block=x['previous_block'],
             merkle_root=bitcoin_data.check_merkle_link(bitcoin_data.hash256(new_packed_gentx), x['merkle_link']), # new_packed_gentx has witness data stripped
             timestamp=pack.IntType(32).unpack(getwork._swap4(ntime.decode('hex'))),

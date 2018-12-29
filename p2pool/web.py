@@ -298,8 +298,8 @@ def get_web_root(wb, datadir_path, bitcoind_getinfo_var, stop_event=variable.Eve
         share = node.tracker.items[int(share_hash_str, 16)]
         
         return dict(
-            parent='%064x' % share.previous_hash,
-            far_parent='%064x' % share.share_info['far_share_hash'],
+            parent='%064x' % share.previous_hash if share.previous_hash else "None",
+            far_parent='%064x' % share.share_info['far_share_hash'] if share.share_info['far_share_hash'] else "None",
             children=['%064x' % x for x in sorted(node.tracker.reverse.get(share.hash, set()), key=lambda sh: -len(node.tracker.reverse.get(sh, set())))], # sorted from most children to least children
             type_name=type(share).__name__,
             local=dict(

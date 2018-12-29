@@ -113,6 +113,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
                     height=t['height'] + 1,
                     time=max(int(time.time() + 0.5), bb['timestamp'] + 1),
                     transactions=[],
+                    transaction_hashes=[],
                     transaction_fees=[],
                     merkle_link=bitcoin_data.calculate_merkle_link([None], 0),
                     subsidy=self.node.net.PARENT.SUBSIDY_FUNC(self.node.bitcoind_work.value['height']),
@@ -296,7 +297,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
             mm_data = ''
             mm_later = []
         
-        tx_hashes = [bitcoin_data.hash256(bitcoin_data.tx_type.pack(tx)) for tx in self.current_work.value['transactions']]
+        tx_hashes = self.current_work.value['transaction_hashes']
         tx_map = dict(zip(tx_hashes, self.current_work.value['transactions']))
 
         self.node.mining2_txs_var.set(tx_map) # let node.py know not to evict these transactions
@@ -532,8 +533,15 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 if not on_time:
                     self.my_doa_share_hashes.add(share.hash)
                 
-                self.node.tracker.add(share)
-                self.node.set_best_share()
+                sibling_count = len(self.node.tracker.reverse.get(share.previous_hash, set()))
+                if on_time or sibling_count < 4:
+                    self.node.tracker.add(share)
+                else:
+                    print "Already have %i DOA shares with this parent. Not adding more." % sibling_count
+                if on_time:
+                    self.node.set_best_share()
+                else:
+                    print "Not considering work switching to DOA share"
                 
                 try:
                     if (pow_hash <= header['bits'].target or p2pool.DEBUG) and self.node.p2p_node is not None:
@@ -542,7 +550,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
                     log.err(None, 'Error forwarding block solution:')
                 
                 self.share_received.happened(bitcoin_data.target_to_average_attempts(share.target), not on_time, share.hash)
-            
+
             if pow_hash > target:
                 print 'Worker %s submitted share with hash > target:' % (user,)
                 print '    Hash:   %56x' % (pow_hash,)
@@ -559,7 +567,7 @@ class WorkerBridge(worker_interface.WorkerBridge):
                 self.local_rate_monitor.add_datum(dict(work=bitcoin_data.target_to_average_attempts(target), dead=not on_time, user=user, share_target=share_info['bits'].target))
                 self.local_addr_rate_monitor.add_datum(dict(work=bitcoin_data.target_to_average_attempts(target), pubkey_hash=pubkey_hash))
             t1 = time.time()
-            if p2pool.BENCH and (t1-t1) > .01: print "%8.3f ms for work.py:got_response()" % ((t1-t0)*1000.)
+            if p2pool.BENCH and (t1-t0) > .01: print "%8.3f ms for work.py:got_response()" % ((t1-t0)*1000.)
 
             return on_time
         t1 = time.time()

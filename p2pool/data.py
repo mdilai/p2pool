@@ -719,7 +719,7 @@ class OkayTracker(forest.Tracker):
             -self.items[h].should_punish_reason(previous_block, bits, self, known_txs)[0],
         ), h) for h in self.verified.tails.get(best_tail, []))
         punish_aggressively = traditional_sort[-1][0][2] if traditional_sort else False
-        if punish_aggressively:
+        if punish_aggressively > 0:
             print "Other nodes are going to follow a share we want to punish! Time to hulk up."
 
         if p2pool.DEBUG:
